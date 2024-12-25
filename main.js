@@ -3,7 +3,6 @@ const path = require("path");
 const url = require("url");
 
 const checkForUpdatesAndNotify = require("./src/node/updates.js");
-const interceptStreamProtocol = require("./src/node/protocol.js");
 
 const {
   app,
@@ -23,16 +22,6 @@ if (isDev) {
 let mainWindow;
 
 function createWindow() {
-  protocol.interceptStreamProtocol(
-    "file",
-    interceptStreamProtocol(),
-    (error) => {
-      if (error) {
-        console.error("Failed to register protocol");
-      }
-    }
-  );
-
   const { width, height } = screen.getPrimaryDisplay().workAreaSize;
 
   // Create the browser window.
@@ -52,6 +41,7 @@ function createWindow() {
     webPreferences: {
       nodeIntegration: false,
       preload: path.join(__dirname, "src/preload/index.js"),
+      webSecurity: false,
     },
   });
 
@@ -72,13 +62,7 @@ function createWindow() {
   mainWindow.on('closed', () => ipcMain.emit('closed'));
 
   // and load the index.html of the app.
-  mainWindow.loadURL(
-    url.format({
-      pathname: "./dist/index.html",
-      protocol: "file:",
-      slashes: true,
-    })
-  );
+  mainWindow.loadFile(path.join(__dirname, 'dist', 'index.html'));
 
   // and show window once it's ready (to prevent flashing)
   mainWindow.once("ready-to-show", () => {
@@ -117,10 +101,7 @@ app.on("web-contents-created", (event, contents) => {
   contents.on("new-window", (event, navigationUrl) => {
     const parsedUrl = url.parse(navigationUrl);
 
-    if (
-      parsedUrl.protocol === "file:" ||
-      parsedUrl.protocol === "chrome-devtools:"
-    ) {
+    if (parsedUrl.protocol === "chrome-devtools:") {
       return;
     }
 
