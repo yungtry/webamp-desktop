@@ -42,22 +42,28 @@ function createWindow() {
     icon: path.join(__dirname, "res/icon.png"),
     webPreferences: {
       nodeIntegration: false,
+      contextIsolation: true,
       preload: path.join(__dirname, "src/preload/index.js"),
       webSecurity: false,
       plugins: true // Enable plugins for Widevine
     },
   });
 
+  // Set window to ignore mouse events by default
+  mainWindow.setIgnoreMouseEvents(true, { forward: true });
+
   ipcMain.on("minimize", () => mainWindow.minimize());
   ipcMain.on("close", () => mainWindow.close());
   ipcMain.on("setThumbnailClip", (_, clip) => mainWindow.setThumbnailClip(clip));
   ipcMain.handle("getBounds", () => mainWindow.getBounds());
   ipcMain.handle("getCursorScreenPoint", () => screen.getCursorScreenPoint());
-  ipcMain.on("ignoreMouseEvents", (_, ignore) => {
+  
+  // Modify the ignoreMouseEvents handler to be more precise
+  ipcMain.on("ignoreMouseEvents", (_, ignore, options = {}) => {
     if (ignore) {
-      mainWindow.setIgnoreMouseEvents(true, { forward: true })
+      mainWindow.setIgnoreMouseEvents(true, { forward: true });
     } else {
-      mainWindow.setIgnoreMouseEvents(false)
+      mainWindow.setIgnoreMouseEvents(false);
     }
   });
   mainWindow.on('minimize', () => ipcMain.emit('minimized'));

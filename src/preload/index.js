@@ -343,15 +343,9 @@ function debounce(fn, time = 100) {
 // Add Spotify IPC bridge
 contextBridge.exposeInMainWorld("ipcRenderer", {
   send: (channel, ...args) => {
-    const validChannels = ['initiate-spotify-auth'];
-    if (validChannels.includes(channel)) {
-      ipcRenderer.send(channel, ...args);
-    }
+    ipcRenderer.send(channel, ...args);
   },
   on: (channel, func) => {
-    const validChannels = ['spotify-auth-success', 'spotify-auth-error'];
-    if (validChannels.includes(channel)) {
-      ipcRenderer.on(channel, (event, ...args) => func(...args));
-    }
+    ipcRenderer.on(channel, (event, ...args) => func(...args));
   }
 });

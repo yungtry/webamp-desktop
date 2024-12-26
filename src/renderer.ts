@@ -13,6 +13,17 @@ import type {
     SpotifyPlaylist 
 } from './types'
 
+declare global {
+  interface Window {
+    ipcRenderer: {
+      send: (channel: string, ...args: any[]) => void;
+      on: (channel: string, func: (...args: any[]) => void) => void;
+    };
+  }
+}
+
+const ipcRenderer = window.ipcRenderer;
+
 const DEFAULT_DOCUMENT_TITLE = document.title
 let spotifyPlayer: SpotifyPlayerInstance | null = null;
 let currentDeviceId: string | null = null;
@@ -55,6 +66,9 @@ let lastPlayedTrackUri: string | null = null;
 
 // Add this at the top level
 const dummyAudioCache = new Map<string, string>();
+
+// Add at the top level after imports
+let isOverWebamp = false;
 
 // Function to get canvas reference
 function getCanvas(): HTMLCanvasElement | null {
@@ -1641,3 +1655,82 @@ window.addEventListener('beforeunload', () => {
     playbackStateInterval = null;
   }
 });
+
+// Add this function after window.onload
+function setupMouseHandling() {
+  // Get all Webamp windows and UI elements
+  const webampWindows = ['#main-window', '#equalizer-window', '#playlist-window'];
+  
+  // Function to check if element is part of Webamp UI
+  function isWebampElement(element: HTMLElement | null): boolean {
+    if (!element) return false;
+    return webampWindows.some(sel => element.closest(sel)) || 
+           element.closest('.spotify-playlist-wrapper') !== null;
+  }
+
+  // Handle mouse enter/leave for Webamp windows
+  webampWindows.forEach(selector => {
+    const window = document.querySelector(selector);
+    if (window) {
+      window.addEventListener('mouseenter', () => {
+        if (!isOverWebamp) {
+          isOverWebamp = true;
+          ipcRenderer.send('ignoreMouseEvents', false);
+        }
+      });
+
+      window.addEventListener('mouseleave', (e) => {
+        const toElement = (e as MouseEvent).relatedTarget as HTMLElement;
+        if (!isWebampElement(toElement)) {
+          isOverWebamp = false;
+          ipcRenderer.send('ignoreMouseEvents', true);
+        }
+      });
+    }
+  });
+
+  // Handle playlist wrapper
+  const observer = new MutationObserver((mutations) => {
+    mutations.forEach((mutation) => {
+      mutation.addedNodes.forEach((node) => {
+        if ((node as HTMLElement).classList?.contains('spotify-playlist-wrapper')) {
+          const wrapper = node as HTMLElement;
+          wrapper.addEventListener('mouseenter', () => {
+            if (!isOverWebamp) {
+              isOverWebamp = true;
+              ipcRenderer.send('ignoreMouseEvents', false);
+            }
+          });
+
+          wrapper.addEventListener('mouseleave', (e) => {
+            const toElement = (e as MouseEvent).relatedTarget as HTMLElement;
+            if (!isWebampElement(toElement)) {
+              isOverWebamp = false;
+              ipcRenderer.send('ignoreMouseEvents', true);
+            }
+          });
+        }
+      });
+    });
+  });
+
+  observer.observe(document.body, { childList: true });
+
+  // Handle clicks outside Webamp windows
+  document.addEventListener('click', (e) => {
+    const target = e.target as HTMLElement;
+    if (!isWebampElement(target)) {
+      isOverWebamp = false;
+      ipcRenderer.send('ignoreMouseEvents', true);
+    }
+  });
+}
+
+// Add this line to window.onload
+window.onload = async () => {
+  // ... existing code ...
+  
+  setupMouseHandling();
+  
+  // ... rest of existing code ...
+};
