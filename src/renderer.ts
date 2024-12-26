@@ -498,6 +498,12 @@ async function showPlaylistSelector(ejectButton: Element): Promise<void> {
   defaultOption.text = 'Select a playlist...';
   defaultOption.value = '';
   select.appendChild(defaultOption);
+
+  // Add Liked Songs option
+  const likedSongsOption = document.createElement('option');
+  likedSongsOption.text = 'Liked Songs';
+  likedSongsOption.value = 'liked';
+  select.appendChild(likedSongsOption);
   
   // Load and populate playlists
   const playlists = await loadSpotifyPlaylists();
@@ -511,9 +517,137 @@ async function showPlaylistSelector(ejectButton: Element): Promise<void> {
   // Handle playlist selection
   select.onchange = async () => {
     if (!select.value) return;
-    const tracks = await loadPlaylistTracks(select.value);
-    webamp.appendTracks(tracks);
+
+    // Remove dropdown immediately
     document.body.removeChild(wrapper);
+
+    // Disable eject button
+    const ejectButton = document.querySelector('#webamp #main-window #eject') as HTMLElement;
+    if (ejectButton) {
+      ejectButton.style.pointerEvents = 'none';
+      ejectButton.style.opacity = '0.5';
+    }
+
+    // Stop current playback
+    if (spotifyPlayer && isSpotifyPlaying) {
+      await spotifyPlayer.pause();
+      isSpotifyPlaying = false;
+      updatePlaybackStateUI(false);
+      
+      // Pause dummy audio
+      const audioElements = document.querySelectorAll('audio');
+      audioElements.forEach(audio => {
+        audio.pause();
+      });
+    }
+
+    // Create loading indicator
+    const loadingDiv = document.createElement('div');
+    loadingDiv.style.position = 'fixed';
+    loadingDiv.style.top = '50%';
+    loadingDiv.style.left = '50%';
+    loadingDiv.style.transform = 'translate(-50%, -50%)';
+    loadingDiv.style.backgroundColor = '#000';
+    loadingDiv.style.color = '#00ff00';
+    loadingDiv.style.padding = '10px';
+    loadingDiv.style.border = '1px solid #666';
+    loadingDiv.style.zIndex = '100000';
+    document.body.appendChild(loadingDiv);
+
+    try {
+      let tracks;
+      if (select.value === 'liked') {
+        // Load liked songs with streaming response
+        const response = await fetch('http://localhost:3000/liked');
+        const reader = response.body?.getReader();
+        if (!reader) throw new Error('No reader available');
+
+        // Read the stream
+        let receivedLength = 0;
+        const chunks = [];
+        
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          
+          chunks.push(value);
+          receivedLength += value.length;
+          
+          // Update loading indicator
+          loadingDiv.textContent = `Loading liked songs: ${Math.floor(receivedLength / 1024)}KB received...`;
+        }
+
+        // Combine chunks and parse JSON
+        const chunksAll = new Uint8Array(receivedLength);
+        let position = 0;
+        for (const chunk of chunks) {
+          chunksAll.set(chunk, position);
+          position += chunk.length;
+        }
+        
+        const data = JSON.parse(new TextDecoder().decode(chunksAll));
+        if (!data.error) {
+          // Process liked songs the same way as playlist tracks
+          tracks = data.items.map((item: any) => {
+            // Create a unique key for this track
+            const trackKey = `${item.track.name}-${item.track.artists[0].name}`;
+            
+            // Store the URI in our map
+            trackUriMap.set(trackKey, item.track.uri);
+            
+            // Create silent WAV file with correct duration
+            const silentAudioUrl = createSilentWavFile(item.track.duration_ms);
+            
+            return {
+              metaData: {
+                artist: item.track.artists[0].name,
+                title: item.track.name,
+                spotifyUri: item.track.uri
+              },
+              url: silentAudioUrl,
+              duration: Math.floor(item.track.duration_ms / 1000),
+              length: formatDuration(item.track.duration_ms),
+              spotifyUri: item.track.uri,
+              defaultName: `${item.track.name} - ${item.track.artists[0].name}`,
+              isSpotifyTrack: true
+            } as WebampTrack & WebampSpotifyTrack;
+          });
+        }
+      } else {
+        // Load regular playlist
+        loadingDiv.textContent = 'Loading playlist tracks...';
+        tracks = await loadPlaylistTracks(select.value);
+      }
+
+      if (tracks) {
+        loadingDiv.textContent = 'Clearing current playlist...';
+        // Clear playlist by setting an empty array
+        await webamp.setTracksToPlay([]);
+
+        loadingDiv.textContent = 'Converting tracks to audio files...';
+        // Create silent audio files in batches to avoid blocking
+        const batchSize = 50;
+        for (let i = 0; i < tracks.length; i += batchSize) {
+          const batch = tracks.slice(i, i + batchSize);
+          loadingDiv.textContent = `Converting tracks to audio files... (${Math.min(i + batchSize, tracks.length)}/${tracks.length})`;
+          await new Promise(resolve => setTimeout(resolve, 0)); // Let UI update
+        }
+        
+        loadingDiv.textContent = 'Adding tracks to playlist...';
+        await webamp.appendTracks(tracks);
+      }
+    } catch (error) {
+      console.error('Error loading tracks:', error);
+      loadingDiv.textContent = 'Error loading tracks: ' + error.message;
+      await new Promise(resolve => setTimeout(resolve, 2000));
+    } finally {
+      // Re-enable eject button
+      if (ejectButton) {
+        ejectButton.style.pointerEvents = 'auto';
+        ejectButton.style.opacity = '1';
+      }
+      document.body.removeChild(loadingDiv);
+    }
   };
 
   // Handle click outside
@@ -778,6 +912,28 @@ async function verifyTrackSync(track: any) {
   }
 }
 
+// Add this function to handle synchronized playback start
+async function startSynchronizedPlayback(track: any, spotifyUri: string) {
+  // Pause Webamp's audio elements first
+  const audioElements = document.querySelectorAll('audio');
+  audioElements.forEach(audio => {
+    audio.pause();
+  });
+
+  // Start Spotify playback
+  console.log('Starting Spotify playback...');
+  await playSpotifyTrack(spotifyUri, 0);
+
+  // Wait a bit to ensure Spotify has started
+  await new Promise(resolve => setTimeout(resolve, 100));
+
+  // Now start Webamp's playback
+  console.log('Starting Webamp playback...');
+  audioElements.forEach(audio => {
+    audio.play();
+  });
+}
+
 // Modify the onTrackDidChange handler
 webamp.onTrackDidChange((track: any) => {
   console.log('Track change event triggered');
@@ -834,7 +990,7 @@ webamp.onTrackDidChange((track: any) => {
     // Only start playback if this is a new track
     if (spotifyUri !== lastPlayedTrackUri) {
       lastPlayedTrackUri = spotifyUri;
-      playSpotifyTrack(spotifyUri, 0);
+      startSynchronizedPlayback(track, spotifyUri);
     }
 
     // Set up audio elements
