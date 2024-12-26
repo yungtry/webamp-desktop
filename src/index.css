@@ -32,3 +32,17 @@ html, body {
     width: 100vw;
     height: 100vh;
 }
+
+.spotify-button {
+  background: #1DB954;
+  color: white;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-family: Arial, sans-serif;
+  z-index: 9999;
+}
+
+.spotify-button:hover {
+  background: #1ed760;
+}

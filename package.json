@@ -13,7 +13,8 @@
     "pack:win": "build -w --x64",
     "pack:linux": "build -l --x64",
     "pack:mac": "build -m --x64",
-    "dist": "yarn run build && build --x64"
+    "dist": "yarn run build && build --x64",
+    "postinstall": "electron-builder install-app-deps"
   },
   "homepage": "https://github.com/durasj/webamp-desktop",
   "repository": "https://github.com/durasj/webamp-desktop",
@@ -21,8 +22,11 @@
   "license": "MIT",
   "dependencies": {
     "electron-is-dev": "^2.0.0",
-    "electron-log": "^5.0.0",
-    "electron-updater": "^6.1.4",
+    "electron-log": "^5.1.0",
+    "electron-updater": "^6.1.7",
+    "express": "^4.18.2",
+    "spotify-web-api-node": "^5.0.2",
+    "dotenv": "^16.3.1",
     "html-to-text": "^9.0.5",
     "left-clicky": "0.1.1",
     "mime-types": "^2.1.35"
@@ -33,8 +37,8 @@
     "@types/node": "^20.8.10",
     "copy-webpack-plugin": "^12.0.2",
     "css-loader": "^7.1.2",
-    "electron": "^27.0.3",
-    "electron-builder": "^24.6.4",
+    "electron": "https://github.com/castlabs/electron-releases#v33.0.0+wvcus",
+    "electron-builder": "^24.9.1",
     "electron-debug": "^3.2.0",
     "eslint": "^8.53.0",
     "fs-extra": "^11.2.0",
@@ -72,7 +76,10 @@
       "target": "default"
     },
     "win": {
-      "target": "nsis-web"
+      "target": "nsis-web",
+      "certificateSubjectName": "castLabs GmbH",
+      "rfc3161TimeStampServer": "http://timestamp.digicert.com",
+      "signingHashAlgorithms": ["sha256"]
     },
     "linux": {
       "target": [
@@ -85,7 +92,9 @@
       "provider": "github",
       "owner": "durasj",
       "releaseType": "draft"
-    }
+    },
+    "afterPack": "./build/afterPack.js",
+    "afterSign": "./build/afterSign.js"
   },
   "jest": {
     "transform": {

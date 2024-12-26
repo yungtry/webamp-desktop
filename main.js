@@ -3,6 +3,7 @@ const path = require("path");
 const url = require("url");
 
 const checkForUpdatesAndNotify = require("./src/node/updates.js");
+require('./src/server/index.js'); // Start the Express server
 
 const {
   app,
@@ -11,6 +12,7 @@ const {
   ipcMain,
   shell,
   BrowserWindow,
+  components
 } = require("electron");
 
 if (isDev) {
@@ -42,6 +44,7 @@ function createWindow() {
       nodeIntegration: false,
       preload: path.join(__dirname, "src/preload/index.js"),
       webSecurity: false,
+      plugins: true // Enable plugins for Widevine
     },
   });
 
@@ -84,24 +87,42 @@ function createWindow() {
 // See https://bugs.chromium.org/p/chromium/issues/detail?id=854601#c7
 if (process.platform === "linux") {
   app.disableHardwareAcceleration();
-  app.on("ready", () => setTimeout(createWindow, 100));
+  app.whenReady().then(async () => {
+    await components.whenReady();
+    console.log('Components ready:', components.status());
+    setTimeout(createWindow, 100);
+  });
 } else {
-  app.on("ready", createWindow);
+  app.whenReady().then(async () => {
+    await components.whenReady();
+    console.log('Components ready:', components.status());
+    createWindow();
+  });
 }
 
+// Add new IPC handlers for Spotify authentication
+ipcMain.on("initiate-spotify-auth", () => {
+  shell.openExternal('http://localhost:3000/login');
+});
+
 app.on("web-contents-created", (event, contents) => {
-  // Prevent all navigation for security reasons
-  // See https://github.com/electron/electron/blob/master/docs/tutorial/security.md#13-disable-or-limit-navigation
+  // Prevent all navigation for security reasons except for Spotify auth
   contents.on("will-navigate", (event, navigationUrl) => {
-    event.preventDefault();
+    const parsedUrl = url.parse(navigationUrl);
+    if (!parsedUrl.hostname.includes('spotify.com') && !parsedUrl.hostname.includes('localhost')) {
+      event.preventDefault();
+    }
   });
-  // Prevent new window creation for security reasons
-  // and open the URLs in the default browser instead
-  // See https://github.com/electron/electron/blob/master/docs/tutorial/security.md#14-disable-or-limit-creation-of-new-windows
+  
+  // Allow new windows for Spotify auth, otherwise open in default browser
   contents.on("new-window", (event, navigationUrl) => {
     const parsedUrl = url.parse(navigationUrl);
 
     if (parsedUrl.protocol === "chrome-devtools:") {
+      return;
+    }
+
+    if (parsedUrl.hostname.includes('spotify.com') || parsedUrl.hostname.includes('localhost')) {
       return;
     }
 

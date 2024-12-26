@@ -1,3 +1,7 @@
 node_modules
 .cache
 .parcel-cache
+.env*
+.vscode/
+.DS_Store
+.idea/
