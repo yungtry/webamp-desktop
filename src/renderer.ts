@@ -53,6 +53,9 @@ let isTrackChangeInProgress = false;
 // Add this flag at the top level
 let lastPlayedTrackUri: string | null = null;
 
+// Add this at the top level
+const dummyAudioCache = new Map<string, string>();
+
 // Function to get canvas reference
 function getCanvas(): HTMLCanvasElement | null {
   if (!canvasRef) {
@@ -356,6 +359,58 @@ async function loadSpotifyPlaylists(): Promise<SpotifyPlaylist[]> {
   }
 }
 
+// Add this function to create a minimal WAV file with correct duration
+function createSilentWavFile(durationMs: number): string {
+  // Use minimal sample rate and single channel to reduce size
+  const sampleRate = 8000; // Minimum sample rate that still works reliably
+  const channels = 1;
+  const bitsPerSample = 8;
+  const numSamples = Math.ceil(sampleRate * (durationMs / 1000));
+  
+  // Calculate sizes
+  const dataSize = numSamples * channels * (bitsPerSample / 8);
+  const fileSize = 44 + dataSize; // 44 bytes for WAV header
+  
+  // Create buffer
+  const buffer = new ArrayBuffer(fileSize);
+  const view = new DataView(buffer);
+  
+  // WAV header
+  const writeString = (offset: number, string: string) => {
+    for (let i = 0; i < string.length; i++) {
+      view.setUint8(offset + i, string.charCodeAt(i));
+    }
+  };
+  
+  // RIFF chunk descriptor
+  writeString(0, 'RIFF');
+  view.setUint32(4, fileSize - 8, true);
+  writeString(8, 'WAVE');
+  
+  // fmt sub-chunk
+  writeString(12, 'fmt ');
+  view.setUint32(16, 16, true); // fmt chunk size
+  view.setUint16(20, 1, true); // PCM format
+  view.setUint16(22, channels, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * channels * (bitsPerSample / 8), true); // byte rate
+  view.setUint16(32, channels * (bitsPerSample / 8), true); // block align
+  view.setUint16(34, bitsPerSample, true);
+  
+  // data sub-chunk
+  writeString(36, 'data');
+  view.setUint32(40, dataSize, true);
+  
+  // Fill with silence (128 for 8-bit audio)
+  for (let i = 44; i < fileSize; i++) {
+    view.setUint8(i, 128);
+  }
+  
+  // Create blob and URL
+  const blob = new Blob([buffer], { type: 'audio/wav' });
+  return URL.createObjectURL(blob);
+}
+
 // Function to load tracks from a Spotify playlist
 async function loadPlaylistTracks(playlistId: string): Promise<(WebampTrack & WebampSpotifyTrack)[]> {
   console.log('Loading playlist tracks for ID:', playlistId);
@@ -378,13 +433,16 @@ async function loadPlaylistTracks(playlistId: string): Promise<(WebampTrack & We
       // Store the URI in our map
       trackUriMap.set(trackKey, item.track.uri);
       
+      // Create silent WAV file with correct duration
+      const silentAudioUrl = createSilentWavFile(item.track.duration_ms);
+      
       const track = {
         metaData: {
           artist: item.track.artists[0].name,
           title: item.track.name,
           spotifyUri: item.track.uri
         },
-        url: generateSilentAudio(item.track.duration_ms),
+        url: silentAudioUrl,
         duration: Math.floor(item.track.duration_ms / 1000),
         length: formatDuration(item.track.duration_ms),
         spotifyUri: item.track.uri,
@@ -759,6 +817,20 @@ webamp.onTrackDidChange((track: any) => {
     // Update document title
     document.title = `${track.metaData.title} - ${track.metaData.artist}` || DEFAULT_DOCUMENT_TITLE;
 
+    // Generate dummy audio file if not cached
+    if (!dummyAudioCache.has(spotifyUri) && track.durationMs) {
+      const dummyAudioUrl = generateSilentAudio(track.durationMs);
+      dummyAudioCache.set(spotifyUri, dummyAudioUrl);
+      
+      // Update track's URL
+      const audioElements = document.querySelectorAll('audio');
+      audioElements.forEach(audio => {
+        if (audio.src === SILENT_AUDIO) {
+          audio.src = dummyAudioUrl;
+        }
+      });
+    }
+
     // Only start playback if this is a new track
     if (spotifyUri !== lastPlayedTrackUri) {
       lastPlayedTrackUri = spotifyUri;
@@ -769,6 +841,10 @@ webamp.onTrackDidChange((track: any) => {
     const audioElements = document.querySelectorAll('audio');
     audioElements.forEach(audio => {
       audio.volume = 0;
+      // Use cached dummy audio if available
+      if (dummyAudioCache.has(spotifyUri)) {
+        audio.src = dummyAudioCache.get(spotifyUri)!;
+      }
       synchronizePlaybackTime(track, audio);
     });
   }
@@ -1367,3 +1443,45 @@ function setupSecondVisualizer() {
     });
   }
 }
+
+// Add cleanup for dummy audio cache
+window.addEventListener('beforeunload', () => {
+  // Revoke all cached dummy audio URLs
+  dummyAudioCache.forEach(url => {
+    if (url.startsWith('blob:')) {
+      URL.revokeObjectURL(url);
+    }
+  });
+  dummyAudioCache.clear();
+  
+  // Clear existing intervals
+  if (visualizerInterval) {
+    clearInterval(visualizerInterval);
+    visualizerInterval = null;
+  }
+  if (playbackStateInterval) {
+    clearInterval(playbackStateInterval);
+    playbackStateInterval = null;
+  }
+});
+
+// Add cleanup for blob URLs
+window.addEventListener('beforeunload', () => {
+  // Clean up all blob URLs
+  const tracks = document.querySelectorAll('audio');
+  tracks.forEach(track => {
+    if (track.src.startsWith('blob:')) {
+      URL.revokeObjectURL(track.src);
+    }
+  });
+  
+  // Clear existing intervals
+  if (visualizerInterval) {
+    clearInterval(visualizerInterval);
+    visualizerInterval = null;
+  }
+  if (playbackStateInterval) {
+    clearInterval(playbackStateInterval);
+    playbackStateInterval = null;
+  }
+});
