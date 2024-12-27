@@ -108,7 +108,37 @@ if (process.platform === "linux") {
 
 // Add new IPC handlers for Spotify authentication
 ipcMain.on("initiate-spotify-auth", () => {
-  shell.openExternal('http://localhost:3000/login');
+  let authWindow = new BrowserWindow({
+    width: 800,
+    height: 600,
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      preload: path.join(__dirname, "src/preload/auth-preload.js")
+    }
+  });
+
+  authWindow.loadURL('http://localhost:3000/login');
+
+  // Handle window close
+  authWindow.on('closed', () => {
+    authWindow = null;
+  });
+
+  // Listen for the success URL
+  authWindow.webContents.on('did-navigate', (event, url) => {
+    if (url.startsWith('http://localhost:3000/callback')) {
+      // Send success message to main window
+      mainWindow.webContents.send('spotify-auth-success');
+      // Close auth window after a short delay
+      setTimeout(() => {
+        if (authWindow) {
+          authWindow.close();
+          authWindow = null;
+        }
+      }, 1000);
+    }
+  });
 });
 
 app.on("web-contents-created", (event, contents) => {

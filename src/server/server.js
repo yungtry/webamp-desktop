@@ -45,18 +45,19 @@ app.get('/callback', async (req, res) => {
     spotifyApi.setRefreshToken(data.body['refresh_token']);
     isAuthenticated = true;
     
-    // Close the browser window and send message to the main process
+    // Just show success message, main process will handle the window
     res.send(`
-      <script>
-        if (window.opener) {
-          window.opener.postMessage('spotify-auth-success', '*');
-        }
-        window.close();
-      </script>
+      <h1 style="font-family: Arial; text-align: center; margin-top: 50px;">
+        Authentication successful! This window will close automatically.
+      </h1>
     `);
   } catch (error) {
     console.error('Error getting tokens:', error);
-    res.status(500).send('Authentication failed');
+    res.status(500).send(`
+      <h1 style="font-family: Arial; text-align: center; margin-top: 50px; color: red;">
+        Authentication failed: ${error.message}
+      </h1>
+    `);
   }
 });
 

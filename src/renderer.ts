@@ -70,6 +70,19 @@ const dummyAudioCache = new Map<string, string>();
 // Add at the top level after imports
 let isOverWebamp = false;
 
+// Add at the top level
+let lastResyncTime = 0;
+const RESYNC_DEBOUNCE_MS = 500; // Minimum time between resyncs
+
+// Add this flag at the top level
+let isPlaybackStarting = false;
+
+// Add at the top level
+let initialPlaybackHandled = false;
+
+// Add at the top level
+let isAuthenticated = false;
+
 // Function to get canvas reference
 function getCanvas(): HTMLCanvasElement | null {
   if (!canvasRef) {
@@ -223,10 +236,37 @@ async function initSpotifyPlayer() {
             });
 
             // Add state change listener
-            spotifyPlayer.addListener('player_state_changed', (state: SpotifyPlaybackState) => {
+            spotifyPlayer.addListener('player_state_changed', async (state: SpotifyPlaybackState) => {
               console.log('Playback state changed:', state);
               if (state) {
+                const wasPlaying = isSpotifyPlaying;
                 isSpotifyPlaying = !state.paused;
+
+                // Handle initial playback
+                if (isSpotifyPlaying && !wasPlaying) {
+                  isPlaybackStarting = true;
+                  initialPlaybackHandled = false;
+                  // Wait a bit before allowing seeks
+                  setTimeout(() => {
+                    isPlaybackStarting = false;
+                  }, 1000);
+                }
+
+                // Only handle position updates if we're not in the initial playback start
+                if (!isPlaybackStarting) {
+                  // If this is the first position update after initial playback
+                  if (state.position > 0 && !initialPlaybackHandled) {
+                    initialPlaybackHandled = true;
+                    // Update Webamp's position to match Spotify
+                    const seekBar = document.getElementById('position') as HTMLInputElement;
+                    if (seekBar) {
+                      const percentage = (state.position / state.duration) * 100;
+                      seekBar.value = percentage.toString();
+                      seekBar.dispatchEvent(new Event('change', { bubbles: true }));
+                    }
+                  }
+                }
+
                 if (isSpotifyPlaying) {
                   startPlaybackStateMonitoring();
                 } else {
@@ -377,6 +417,17 @@ async function playSpotifyTrack(uri: string, startPosition: number = 0) {
         const errorData = await response.json();
         console.error('Playback API error details:', errorData);
         errorMessage += `: ${JSON.stringify(errorData)}`;
+
+        // If we get a 403 error, automatically skip to next track
+        if (response.status === 403) {
+          console.log('Track unavailable (403), skipping to next track...');
+          // Find and click the next button
+          const nextButton = document.querySelector('#main-window #next') as HTMLElement;
+          if (nextButton) {
+            nextButton.click();
+            return; // Exit the function early
+          }
+        }
       } catch (e) {
         console.error('Could not parse error response:', e);
       }
@@ -792,19 +843,51 @@ async function showPlaylistSelector(ejectButton: Element): Promise<void> {
   select.focus();
 }
 
-// Initialize Spotify authentication
+// Function to initialize Spotify authentication
 function initSpotifyAuth() {
-  // Listen for the authentication success message
-  window.addEventListener('message', async (event) => {
-    if (event.data === 'spotify-auth-success') {
-      console.log('Authentication successful, initializing player...');
+  if (isAuthenticated) {
+    console.log('Already authenticated');
+    return;
+  }
+
+  // Remove any existing player instance
+  if (spotifyPlayer) {
+    spotifyPlayer.disconnect();
+    spotifyPlayer = null;
+    currentDeviceId = null;
+    playerInitializationPromise = null;
+  }
+
+  // Set up IPC listener for auth success
+  window.ipcRenderer.on('spotify-auth-success', async () => {
+    console.log('Authentication successful, initializing player...');
+    
+    // Initialize player after a short delay to ensure token is saved
+    setTimeout(async () => {
       try {
+        // Verify we have a valid token before initializing player
+        const tokenResponse = await fetch('http://localhost:3000/token');
+        const tokenData = await tokenResponse.json();
+        if (tokenData.error) {
+          console.error('No valid token available after auth');
+          return;
+        }
+
+        // Initialize the player
         await initSpotifyPlayer();
         console.log('Player initialized successfully');
+        
+        // Mark as authenticated and disable the About button
+        isAuthenticated = true;
+        const aboutButton = document.querySelector('#main-window #about') as HTMLElement;
+        if (aboutButton) {
+          aboutButton.style.pointerEvents = 'none';
+          aboutButton.style.opacity = '0.5';
+        }
       } catch (error) {
         console.error('Failed to initialize player:', error);
       }
-    }
+    }, 500);
   });
 
   // Start the authentication process
