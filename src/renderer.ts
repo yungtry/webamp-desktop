@@ -287,73 +287,104 @@ function formatDuration(ms: number): string {
 
 // Function to play a Spotify track
 async function playSpotifyTrack(uri: string, startPosition: number = 0) {
-  console.log('Starting playback attempt...', { uri, deviceId: currentDeviceId, startPosition });
+  console.log('Starting playback...', { uri, startPosition });
   
+  // Check if this is a local file
+  if (uri.startsWith('spotify:local:')) {
+    console.log('Local file detected, cannot play through Spotify Web Playback SDK');
+    throw new Error('Local files are not supported in Spotify Web Playback SDK');
+  }
+
   // Ensure player is initialized
   if (!spotifyPlayer || !currentDeviceId) {
-    console.log('Player not ready, initializing...');
+    console.log('Player not initialized, initializing...');
     try {
       await initSpotifyPlayer();
+      // Wait a bit for the player to be ready
+      await new Promise(resolve => setTimeout(resolve, 1000));
     } catch (error) {
       console.error('Failed to initialize player:', error);
-      return;
+      throw error;
     }
   }
-  
-  if (!spotifyPlayer || !currentDeviceId) {
-    console.error('Player still not initialized after retry');
-    return;
-  }
-  
-  try {
-    // Get the current token
-    const tokenResponse = await fetch('http://localhost:3000/token');
-    const tokenData = await tokenResponse.json();
-    if (tokenData.error) {
-      console.error('Token error:', tokenData.error);
-      throw new Error('No valid token available');
-    }
 
-    // Ensure we're the active device
-    await fetch('https://api.spotify.com/v1/me/player', {
+  if (!spotifyPlayer || !currentDeviceId) {
+    throw new Error('Failed to initialize Spotify player');
+  }
+  
+  // Get fresh token
+  const tokenResponse = await fetch('http://localhost:3000/token');
+  const { token } = await tokenResponse.json();
+
+  try {
+    // Get current playback state
+    const stateResponse = await fetch('https://api.spotify.com/v1/me/player', {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
+    
+    let state = null;
+    if (stateResponse.status !== 204) { // 204 means no content, player is inactive
+      state = await stateResponse.json();
+    }
+    console.log('Current playback state:', state);
+
+    // Transfer playback to our device first
+    console.log('Transferring playback to our device...');
+    const transferResponse = await fetch('https://api.spotify.com/v1/me/player', {
       method: 'PUT',
       headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${tokenData.token}`
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
       },
       body: JSON.stringify({
         device_ids: [currentDeviceId],
-        play: false // Don't auto-play yet
+        play: false
       })
     });
 
-    // Wait a moment for the transfer to complete
-    await new Promise(resolve => setTimeout(resolve, 300));
+    if (!transferResponse.ok) {
+      throw new Error(`Failed to transfer playback: ${transferResponse.status} ${transferResponse.statusText}`);
+    }
 
-    // Now try to play the track
-    console.log('Starting playback...');
+    // Wait a bit for the transfer to take effect
+    await new Promise(resolve => setTimeout(resolve, 1000));
+
+    // Prepare request body
+    const body: any = {
+      uris: [uri]
+    };
+    
+    if (startPosition > 0) {
+      body.position_ms = startPosition;
+    }
+
+    // Make the playback request
+    console.log('Starting playback on device:', currentDeviceId);
     const response = await fetch(`https://api.spotify.com/v1/me/player/play?device_id=${currentDeviceId}`, {
       method: 'PUT',
       headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${tokenData.token}`
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
       },
-      body: JSON.stringify({
-        uris: [uri],
-        position_ms: startPosition // Start from specified position
-      })
+      body: JSON.stringify(body)
     });
 
     if (!response.ok) {
-      const errorData = await response.json();
-      console.error('Playback API error:', errorData);
-      throw new Error('Playback API error');
+      let errorMessage = `${response.status} ${response.statusText}`;
+      try {
+        const errorData = await response.json();
+        console.error('Playback API error details:', errorData);
+        errorMessage += `: ${JSON.stringify(errorData)}`;
+      } catch (e) {
+        console.error('Could not parse error response:', e);
+      }
+      throw new Error(`Playback failed: ${errorMessage}`);
     }
 
     isSpotifyPlaying = true;
-    updatePlaybackStateUI(true);
-    startPlaybackStateMonitoring();
-
+    console.log('Playback started successfully');
   } catch (error) {
     console.error('Error in playback sequence:', error);
     throw error;
@@ -655,6 +686,16 @@ async function showPlaylistSelector(ejectButton: Element): Promise<void> {
                 const trackJson = buffer.slice(trackStart, trackEnd);
                 const item = JSON.parse(trackJson);
                 
+                // Skip local files
+                if (item.track.uri?.startsWith('spotify:local:')) {
+                  console.log('Skipping local file:', item.track.name);
+                  buffer = buffer.slice(trackEnd);
+                  if (buffer.startsWith(',')) {
+                    buffer = buffer.slice(1);
+                  }
+                  continue;
+                }
+
                 // Create track object
                 const trackKey = `${item.track.name}-${item.track.artists[0].name}`;
                 trackUriMap.set(trackKey, item.track.uri);
@@ -1864,3 +1905,38 @@ window.onload = async () => {
   
   // ... rest of existing code ...
 };
+
+// Function to handle track playback
+async function handleTrackPlay(trackKey: string) {
+  console.log('Track lookup:', { trackKey, spotifyUri: trackUriMap.get(trackKey) });
+  const uri = trackUriMap.get(trackKey);
+  
+  if (!uri) {
+    console.error('No Spotify URI found for track:', trackKey);
+    return;
+  }
+
+  // Check if this is a Spotify track
+  if (uri.startsWith('spotify:track:') || uri.startsWith('spotify:local:')) {
+    console.log('Spotify track detected:', {
+      name: trackKey.split('-')[1].trim(),
+      artist: trackKey.split('-')[0].trim(),
+      uri,
+      playerInitialized: !!spotifyPlayer,
+      deviceId: currentDeviceId
+    });
+
+    // For local files, just let Webamp handle playback
+    if (uri.startsWith('spotify:local:')) {
+      console.log('Local file detected, letting Webamp handle playback');
+      return;
+    }
+
+    console.log('Starting Spotify playback...');
+    try {
+      await playSpotifyTrack(uri);
+    } catch (error) {
+      console.error('Failed to start Spotify playback:', error);
+    }
+  }
+}
