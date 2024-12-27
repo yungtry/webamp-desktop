@@ -535,12 +535,8 @@ async function showPlaylistSelector(ejectButton: Element): Promise<void> {
     // Remove dropdown immediately
     document.body.removeChild(wrapper);
 
-    // Disable eject button
-    const ejectButton = document.querySelector('#webamp #main-window #eject') as HTMLElement;
-    if (ejectButton) {
-      ejectButton.style.pointerEvents = 'none';
-      ejectButton.style.opacity = '0.5';
-    }
+    // Disable all playback controls
+    disablePlaybackControls();
 
     // Stop current playback
     if (spotifyPlayer && isSpotifyPlaying) {
@@ -655,11 +651,8 @@ async function showPlaylistSelector(ejectButton: Element): Promise<void> {
       loadingDiv.textContent = 'Error loading tracks: ' + error.message;
       await new Promise(resolve => setTimeout(resolve, 2000));
     } finally {
-      // Re-enable eject button
-      if (ejectButton) {
-        ejectButton.style.pointerEvents = 'auto';
-        ejectButton.style.opacity = '1';
-      }
+      // Re-enable all playback controls
+      enablePlaybackControls();
       document.body.removeChild(loadingDiv);
     }
   };
@@ -1731,6 +1724,70 @@ window.onload = async () => {
   // ... existing code ...
   
   setupMouseHandling();
+  
+  // ... rest of existing code ...
+};
+
+// Add these functions near the top
+function disablePlaybackControls() {
+  const controls = [
+    '#main-window .actions #play',
+    '#main-window .actions #pause',
+    '#main-window .actions #stop',
+    '#main-window .actions #previous',
+    '#main-window .actions #next',
+    '#main-window #eject'
+  ];
+  
+  controls.forEach(selector => {
+    const button = document.querySelector(selector) as HTMLElement;
+    if (button) {
+      button.style.pointerEvents = 'none';
+      button.style.opacity = '0.5';
+    }
+  });
+}
+
+function enablePlaybackControls() {
+  const controls = [
+    '#main-window .actions #play',
+    '#main-window .actions #pause',
+    '#main-window .actions #stop',
+    '#main-window .actions #previous',
+    '#main-window .actions #next',
+    '#main-window #eject'
+  ];
+  
+  controls.forEach(selector => {
+    const button = document.querySelector(selector) as HTMLElement;
+    if (button) {
+      button.style.pointerEvents = 'auto';
+      button.style.opacity = '1';
+    }
+  });
+}
+
+// Add this function to handle play button click
+function setupPlaybackControls() {
+  const playButton = document.querySelector('#main-window .actions #play') as HTMLElement;
+  if (playButton) {
+    playButton.addEventListener('click', async (e) => {
+      // If already playing, do nothing
+      if (isSpotifyPlaying) {
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
+    });
+  }
+}
+
+// Add this to window.onload
+window.onload = async () => {
+  // ... existing code ...
+  
+  setupMouseHandling();
+  setupPlaybackControls();
   
   // ... rest of existing code ...
 };
