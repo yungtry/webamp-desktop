@@ -94,12 +94,15 @@ export interface SpotifyTrack {
 
 export interface WebampSpotifyTrack {
     spotifyUri: string;
-    defaultName: string;
-    length: string;
-    metaData: {
+    isSpotifyTrack: boolean;
+    url?: string;
+    duration?: number;
+    length?: string;
+    defaultName?: string;
+    metaData?: {
         artist: string;
         title: string;
-        spotifyUri?: string;
+        spotifyUri: string;
     };
 }
 

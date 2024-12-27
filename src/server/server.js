@@ -176,55 +176,123 @@ app.get('/liked', async (req, res) => {
   try {
     console.log('Fetching liked songs...');
     
-    // Send headers for streaming response
-    res.writeHead(200, {
-      'Content-Type': 'application/json',
-      'Transfer-Encoding': 'chunked'
-    });
-
-    // Start the response with an opening bracket
-    res.write('{"items":[');
+    // Set up streaming response
+    res.setHeader('Content-Type', 'application/json');
+    res.setHeader('Transfer-Encoding', 'chunked');
     
-    let isFirst = true;
     let offset = 0;
     const limit = 50;
     
-    while (true) {
+    // Get initial response to get total
+    const initialResponse = await spotifyApi.getMySavedTracks({ limit: 1, offset: 0 });
+    const total = initialResponse.body.total;
+    
+    // Start the response with total
+    res.write(`{"total":${total},"items":[`);
+    let isFirst = true;
+
+    while (offset < total) {
       try {
         const response = await spotifyApi.getMySavedTracks({ limit, offset });
         const items = response.body.items;
-        
-        // Send each item in the batch
+
+        // Send each item
         for (const item of items) {
           if (!isFirst) {
             res.write(',');
           }
           isFirst = false;
           res.write(JSON.stringify(item));
+          // Flush the data immediately
+          res.flushHeaders();
         }
-        
-        // Break if this was the last batch
-        if (items.length < limit || offset + limit >= response.body.total) {
-          break;
-        }
-        
+
+        console.log(`Streamed ${offset + items.length}/${total} tracks`);
         offset += limit;
-        await new Promise(resolve => setTimeout(resolve, 100)); // Small delay between requests
+
+        // Small delay to prevent rate limiting
+        await new Promise(resolve => setTimeout(resolve, 100));
       } catch (error) {
         console.error(`Error fetching batch at offset ${offset}:`, error);
         break;
       }
     }
-    
-    // Close the response
+
+    // Close the array and send
     res.write(']}');
     res.end();
-    
   } catch (error) {
     console.error('Error fetching liked songs:', error);
     if (!res.headersSent) {
       res.status(500).json({ 
         error: 'Failed to fetch liked songs',
+        details: error.message
+      });
+    } else {
+      res.end();
+    }
+  }
+});
+
+app.get('/playlist/:id', async (req, res) => {
+  if (!isAuthenticated) {
+    res.status(401).json({ error: 'Not authenticated' });
+    return;
+  }
+
+  try {
+    console.log('Fetching playlist tracks...');
+    
+    // Set up streaming response
+    res.setHeader('Content-Type', 'application/json');
+    res.setHeader('Transfer-Encoding', 'chunked');
+    
+    let offset = 0;
+    const limit = 50;
+    
+    // Get initial response to get total
+    const initialResponse = await spotifyApi.getPlaylistTracks(req.params.id, { limit: 1, offset: 0 });
+    const total = initialResponse.body.total;
+    
+    // Start the response with total
+    res.write(`{"total":${total},"items":[`);
+    let isFirst = true;
+
+    while (offset < total) {
+      try {
+        const response = await spotifyApi.getPlaylistTracks(req.params.id, { limit, offset });
+        const items = response.body.items;
+
+        // Send each item
+        for (const item of items) {
+          if (!isFirst) {
+            res.write(',');
+          }
+          isFirst = false;
+          res.write(JSON.stringify(item));
+          // Flush the data immediately
+          res.flushHeaders();
+        }
+
+        console.log(`Streamed ${offset + items.length}/${total} tracks`);
+        offset += limit;
+
+        // Small delay to prevent rate limiting
+        await new Promise(resolve => setTimeout(resolve, 100));
+      } catch (error) {
+        console.error(`Error fetching batch at offset ${offset}:`, error);
+        break;
+      }
+    }
+
+    // Close the array and send
+    res.write(']}');
+    res.end();
+  } catch (error) {
+    console.error('Error fetching playlist tracks:', error);
+    if (!res.headersSent) {
+      res.status(500).json({ 
+        error: 'Failed to fetch playlist tracks',
         details: error.message
       });
     } else {

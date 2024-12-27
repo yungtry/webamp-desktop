@@ -450,7 +450,7 @@ async function loadPlaylistTracks(playlistId: string): Promise<(WebampTrack & We
       // Create silent WAV file with correct duration
       const silentAudioUrl = createSilentWavFile(item.track.duration_ms);
       
-      const track = {
+      const track: WebampTrack & WebampSpotifyTrack = {
         metaData: {
           artist: item.track.artists[0].name,
           title: item.track.name,
@@ -462,7 +462,7 @@ async function loadPlaylistTracks(playlistId: string): Promise<(WebampTrack & We
         spotifyUri: item.track.uri,
         defaultName: `${item.track.name} - ${item.track.artists[0].name}`,
         isSpotifyTrack: true
-      } as WebampTrack & WebampSpotifyTrack;
+      };
       
       console.log('Created track object:', track);
       return track;
@@ -536,7 +536,7 @@ async function showPlaylistSelector(ejectButton: Element): Promise<void> {
     document.body.removeChild(wrapper);
 
     // Disable all playback controls
-    disablePlaybackControls();
+    //disablePlaybackControls();
 
     // Stop current playback
     if (spotifyPlayer && isSpotifyPlaying) {
@@ -565,86 +565,159 @@ async function showPlaylistSelector(ejectButton: Element): Promise<void> {
     document.body.appendChild(loadingDiv);
 
     try {
-      let tracks;
-      if (select.value === 'liked') {
-        // Load liked songs with streaming response
-        const response = await fetch('http://localhost:3000/liked');
+      // Function to process streamed tracks
+      const processStreamedTracks = async (url: string) => {
+        // Clear existing playlist first
+        loadingDiv.textContent = 'Clearing current playlist...';
+        await webamp.setTracksToPlay([]);
+
+        // Load tracks with streaming response
+        loadingDiv.textContent = 'Starting to load tracks...';
+        const response = await fetch(url);
         const reader = response.body?.getReader();
         if (!reader) throw new Error('No reader available');
 
-        // Read the stream
-        let receivedLength = 0;
-        const chunks = [];
-        
+        let buffer = '';
+        let totalProcessed = 0;
+        let totalTracks = 0;
+        let currentBatch = [];
+        let isFirstChunk = true;
+
         while (true) {
           const { done, value } = await reader.read();
-          if (done) break;
           
-          chunks.push(value);
-          receivedLength += value.length;
-          
-          // Update loading indicator
-          loadingDiv.textContent = `Loading liked songs: ${Math.floor(receivedLength / 1024)}KB received...`;
-        }
+          if (value) {
+            const chunk = new TextDecoder().decode(value);
+            
+            // Handle the first chunk specially
+            if (isFirstChunk) {
+              buffer = chunk;
+              isFirstChunk = false;
+              
+              // Extract total from the first chunk
+              const totalMatch = buffer.match(/"total":(\d+)/);
+              if (totalMatch) {
+                totalTracks = parseInt(totalMatch[1], 10);
+                loadingDiv.textContent = `Found ${totalTracks} tracks to load`;
+                
+                // Remove everything up to the items array
+                const itemsStart = buffer.indexOf('"items":[') + 8;
+                buffer = buffer.slice(itemsStart);
+              }
+            } else {
+              buffer += chunk;
+            }
 
-        // Combine chunks and parse JSON
-        const chunksAll = new Uint8Array(receivedLength);
-        let position = 0;
-        for (const chunk of chunks) {
-          chunksAll.set(chunk, position);
-          position += chunk.length;
+            // Process complete track objects
+            while (true) {
+              const trackStart = buffer.indexOf('{"added_at"');
+              if (trackStart === -1) break;
+              
+              // Find the end of the track object
+              let trackEnd = -1;
+              let depth = 0;
+              let inString = false;
+              let escape = false;
+              
+              for (let i = trackStart; i < buffer.length; i++) {
+                const char = buffer[i];
+                
+                if (escape) {
+                  escape = false;
+                  continue;
+                }
+                
+                if (char === '\\') {
+                  escape = true;
+                  continue;
+                }
+                
+                if (char === '"' && !escape) {
+                  inString = !inString;
+                  continue;
+                }
+                
+                if (!inString) {
+                  if (char === '{') depth++;
+                  if (char === '}') {
+                    depth--;
+                    if (depth === 0) {
+                      trackEnd = i + 1;
+                      break;
+                    }
+                  }
+                }
+              }
+              
+              if (trackEnd === -1) break; // Wait for more data
+              
+              try {
+                const trackJson = buffer.slice(trackStart, trackEnd);
+                const item = JSON.parse(trackJson);
+                
+                // Create track object
+                const trackKey = `${item.track.name}-${item.track.artists[0].name}`;
+                trackUriMap.set(trackKey, item.track.uri);
+                
+                const track = {
+                  metaData: {
+                    artist: item.track.artists[0].name,
+                    title: item.track.name,
+                    spotifyUri: item.track.uri
+                  },
+                  url: createSilentWavFile(item.track.duration_ms),
+                  duration: Math.floor(item.track.duration_ms / 1000),
+                  length: formatDuration(item.track.duration_ms),
+                  spotifyUri: item.track.uri,
+                  defaultName: `${item.track.name} - ${item.track.artists[0].name}`,
+                  isSpotifyTrack: true
+                };
+                
+                currentBatch.push(track);
+                totalProcessed++;
+                
+                // Update progress
+                loadingDiv.textContent = `Processing tracks... ${totalProcessed}/${totalTracks}`;
+                
+                // Add batch of 50 tracks to playlist
+                if (currentBatch.length >= 50) {
+                  await webamp.appendTracks(currentBatch);
+                  currentBatch = [];
+                  // Let UI update
+                  await new Promise(resolve => setTimeout(resolve, 0));
+                }
+                
+                // Remove the processed track and the following comma if present
+                buffer = buffer.slice(trackEnd);
+                if (buffer.startsWith(',')) {
+                  buffer = buffer.slice(1);
+                }
+              } catch (error) {
+                console.error('Error processing track:', error);
+                // Skip to the next track
+                buffer = buffer.slice(trackEnd);
+                if (buffer.startsWith(',')) {
+                  buffer = buffer.slice(1);
+                }
+              }
+            }
+          }
+          
+          if (done) {
+            // Add any remaining tracks
+            if (currentBatch.length > 0) {
+              loadingDiv.textContent = `Adding final ${currentBatch.length} tracks...`;
+              await webamp.appendTracks(currentBatch);
+            }
+            break;
+          }
         }
-        
-        const data = JSON.parse(new TextDecoder().decode(chunksAll));
-        if (!data.error) {
-          // Process liked songs the same way as playlist tracks
-          tracks = data.items.map((item: any) => {
-            // Create a unique key for this track
-            const trackKey = `${item.track.name}-${item.track.artists[0].name}`;
-            
-            // Store the URI in our map
-            trackUriMap.set(trackKey, item.track.uri);
-            
-            // Create silent WAV file with correct duration
-            const silentAudioUrl = createSilentWavFile(item.track.duration_ms);
-            
-            return {
-              metaData: {
-                artist: item.track.artists[0].name,
-                title: item.track.name,
-                spotifyUri: item.track.uri
-              },
-              url: silentAudioUrl,
-              duration: Math.floor(item.track.duration_ms / 1000),
-              length: formatDuration(item.track.duration_ms),
-              spotifyUri: item.track.uri,
-              defaultName: `${item.track.name} - ${item.track.artists[0].name}`,
-              isSpotifyTrack: true
-            } as WebampTrack & WebampSpotifyTrack;
-          });
-        }
+      };
+
+      if (select.value === 'liked') {
+        await processStreamedTracks('http://localhost:3000/liked');
       } else {
-        // Load regular playlist
-        loadingDiv.textContent = 'Loading playlist tracks...';
-        tracks = await loadPlaylistTracks(select.value);
-      }
-
-      if (tracks) {
-        loadingDiv.textContent = 'Clearing current playlist...';
-        // Clear playlist by setting an empty array
-        await webamp.setTracksToPlay([]);
-
-        loadingDiv.textContent = 'Converting tracks to audio files...';
-        // Create silent audio files in batches to avoid blocking
-        const batchSize = 50;
-        for (let i = 0; i < tracks.length; i += batchSize) {
-          const batch = tracks.slice(i, i + batchSize);
-          loadingDiv.textContent = `Converting tracks to audio files... (${Math.min(i + batchSize, tracks.length)}/${tracks.length})`;
-          await new Promise(resolve => setTimeout(resolve, 0)); // Let UI update
-        }
-        
-        loadingDiv.textContent = 'Adding tracks to playlist...';
-        await webamp.appendTracks(tracks);
+        await processStreamedTracks(`http://localhost:3000/playlist/${select.value}`);
       }
     } catch (error) {
       console.error('Error loading tracks:', error);
