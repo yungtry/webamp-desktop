@@ -37,7 +37,9 @@ Binaries will appear soon in the releases section.
 ### Planned:
 ```
 ☐ Session persistence
+☐ Caching playlists and liked songs
 ☐ Playlist interactions (add, remove, edit)
+☐ Personalized playlist support (eg. "Discover Weekly")
 ☐ Likes interactions (add, remove)
 ☐ Spotify search support
 ```
