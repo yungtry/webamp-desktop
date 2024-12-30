@@ -6,7 +6,7 @@
   <h3 align="center">Webamp on desktop with Spotify integration</h3>
 
   <p align="center">
-    Webamp on desktop with Spotify integration inspired by <a href="https://github.com/remigallego/winampify-js">Winampify-js</a>, <a href="https://github.com/durasj/webamp-desktop">Webamp Desktop</a> by <a href="https://github.com/durasj">@durasj</a>, <a href="https://github.com/captbaritone/webamp">Webamp</a> by <a href="https://github.com/captbaritone">@captbaritone</a> and <a href="https://medium.com/@jrcharney/spotiamp-the-story-of-two-good-things-that-never-got-together-d2ca11e7e309">Spotiamp</a>
+    Webamp on desktop with Spotify integration inspired by <a href="https://github.com/remigallego/winampify-js">Winampify-js</a> by <a href="https://github.com/remigallego">@remigallego</a>, <a href="https://github.com/durasj/webamp-desktop">Webamp Desktop</a> by <a href="https://github.com/durasj">@durasj</a>, <a href="https://github.com/captbaritone/webamp">Webamp</a> by <a href="https://github.com/captbaritone">@captbaritone</a> and <a href="https://medium.com/@jrcharney/spotiamp-the-story-of-two-good-things-that-never-got-together-d2ca11e7e309">Spotiamp</a>
   </p>
 
   <p align="center">
@@ -17,7 +17,7 @@
 
 [![Screenshot of webamp desktop on Windows](./res/screen-win.gif)](https://desktop.webamp.org/) [![Screenshot of Webamp on Linux](./res/screen-linux.png)](https://desktop.webamp.org/) [![Screenshot of Webamp on Mac OS X](./res/screen-mac.png)](https://desktop.webamp.org/)
 
-Gimmicky unofficial app. It has some of the functionality of Winamp/Spotiamp, however it lacks a lot of the features. It's a proof of concept mostly for the looks. Based on [Webamp Desktop](https://github.com/durasj/webamp-desktop), based on the [Webamp](https://github.com/captbaritone/webamp) - "A reimplementation of Winamp 2.9 in HTML5 and JavaScript." by the [@captbaritone](https://github.com/captbaritone)
+Gimmicky unofficial app. It has some of the functionality of Winamp/Spotiamp, however it lacks a lot of the features. It's a proof of concept mostly for the looks. Based on [Webamp Desktop](https://github.com/durasj/webamp-desktop) , based on the [Webamp](https://github.com/captbaritone/webamp) - "A reimplementation of Winamp 2.9 in HTML5 and JavaScript." by the [@captbaritone](https://github.com/captbaritone)
 
 ## Downloads
 Binaries will appear soon in the releases section.
@@ -25,29 +25,35 @@ Binaries will appear soon in the releases section.
 ## Features
 
 ### Implemented:
+```
 ✅ Spotify authentication
 ✅ Spotify playlist support
 ✅ Spotify liked songs support
 ✅ Spotify playback, controls, shuffle and volume
 ✅ Winamp's skins partial support
 ✅ Pseudo-vizualizer for Spotify
+```
 
 ### Planned:
+```
 ☐ Session persistence
 ☐ Playlist interactions (add, remove, edit)
 ☐ Likes interactions (add, remove)
 ☐ Spotify search support
-
+```
 ### Not planned:
+```
 ❌ Equalizer support
 ❌ Spotify radio support
 ❌ Mono/Stereo mode
 ❌ Balance control
 ❌ Anything that requires modifying the original track as it would be a violation of Spotify's terms of service
+```
 
 ### Maybe:
+```
 ☐ Full vizualizer support
-
+```
 ## Known issues
 
 ### Installation files are not trusted
