@@ -1,8 +1,8 @@
 {
   "name": "webamp-desktop",
-  "version": "0.3.0",
+  "version": "0.1.0",
   "description": "Desktop version of Winamp 2.9 reimplementation in HTML5 and JS",
-  "main": "main.js",
+  "main": "./main.js",
   "scripts": {
     "start": "yarn run build && electron .",
     "watch": "webpack --watch",
@@ -13,12 +13,14 @@
     "pack:win": "build -w --x64",
     "pack:linux": "build -l --x64",
     "pack:mac": "build -m --x64",
-    "dist": "yarn run build && build --x64",
-    "postinstall": "electron-builder install-app-deps"
+    "dist": "yarn run build",
+    "postinstall": "electron-builder install-app-deps",
+    "export-build": "yarn build && node scripts/inject-env.js && electron-builder",
+    "prebuild": "node scripts/inject-env.js"
   },
-  "homepage": "https://github.com/durasj/webamp-desktop",
-  "repository": "https://github.com/durasj/webamp-desktop",
-  "author": "Jakub Duras <jakub@duras.me>",
+  "homepage": "https://github.com/yungtry/webamp-desktop-spotify",
+  "repository": "https://github.com/yungtry/webamp-desktop-spotify",
+  "author": "yungtry <@yungtry on github>",
   "license": "MIT",
   "dependencies": {
     "electron-is-dev": "^2.0.0",
@@ -57,15 +59,31 @@
     "Chrome 118"
   ],
   "build": {
-    "appId": "me.duras.webamp-desktop",
-    "productName": "Webamp desktop",
-    "copyright": "Copyright © 2018 Jakub Ďuraš",
+    "appId": "com.github.yungtry.webamp-desktop-spotify",
+    "productName": "Webamp-Spotify",
+    "copyright": "Webamp Desktop Copyright © 2018 Jakub Ďuraš, Spotify integration Copyright © 2024 Yungtry",
+    "electronDownload": {
+      "mirror": "https://github.com/castlabs/electron-releases/releases/download/v"
+    },
     "files": [
-      "!.*${/*}",
-      "!src/*.*",
-      "!artifacts${/*}",
-      "!docs${/*}",
-      "!bundled${/*}"
+      "main.js",
+      "dist/**/*",
+      "build/**/*",
+      "src/**/*",
+      "build-env.json",
+      "node_modules/**/*",
+      "package.json",
+      "!**/node_modules/*/{CHANGELOG.md,README.md,README,readme.md,readme}",
+      "!**/node_modules/*/{test,__tests__,tests,powered-test,example,examples}",
+      "!**/node_modules/*.d.ts",
+      "!**/node_modules/.bin",
+      "!**/*.{iml,o,hprof,orig,pyc,pyo,rbc,swp,csproj,sln,xproj}",
+      "!.editorconfig",
+      "!**/._*",
+      "!**/{.DS_Store,.git,.hg,.svn,CVS,RCS,SCCS,.gitignore,.gitattributes}",
+      "!**/{__pycache__,thumbs.db,.flowconfig,.idea,.vs,.nyc_output}",
+      "!**/{appveyor.yml,.travis.yml,circle.yml}",
+      "!**/{npm-debug.log,yarn.lock,.yarn-integrity,.yarn-metadata.json}"
     ],
     "directories": {
       "buildResources": "res",
@@ -73,24 +91,24 @@
     },
     "mac": {
       "category": "public.app-category.music",
-      "target": "default"
+      "target": "default",
+      "icon": "res/icon.hqx"
     },
     "win": {
-      "target": "nsis-web",
-      "certificateSubjectName": "castLabs GmbH",
-      "rfc3161TimeStampServer": "http://timestamp.digicert.com",
-      "signingHashAlgorithms": ["sha256"]
+      "target": "nsis",
+      "icon": "res/icon.ico"
     },
     "linux": {
       "target": [
         "AppImage",
         "deb"
       ],
-      "category": "AudioVideo"
+      "category": "AudioVideo",
+      "icon": "res/icon.png"
     },
     "publish": {
       "provider": "github",
-      "owner": "durasj",
+      "owner": "yungtry",
       "releaseType": "draft"
     },
     "afterPack": "./build/afterPack.js",

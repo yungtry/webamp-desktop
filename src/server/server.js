@@ -1,8 +1,39 @@
 const express = require('express');
 const SpotifyWebApi = require('spotify-web-api-node');
-const dotenv = require('dotenv');
+const path = require('path');
+const crypto = require('crypto');
 
-dotenv.config();
+// Decryption function
+function decrypt(encryptedText) {
+  const password = 'your-secret-password';
+  const key = crypto.scryptSync(password, 'salt', 32);
+  const [ivHex, encryptedHex] = encryptedText.split(':');
+  const iv = Buffer.from(ivHex, 'hex');
+  const encrypted = Buffer.from(encryptedHex, 'hex');
+  const decipher = crypto.createDecipheriv('aes-256-cbc', key, iv);
+  let decrypted = decipher.update(encrypted);
+  decrypted = Buffer.concat([decrypted, decipher.final()]);
+  return decrypted.toString();
+}
+
+// Load environment variables based on environment
+let envConfig = {};
+try {
+  if (process.env.NODE_ENV === 'development') {
+    require('dotenv').config();
+    envConfig = process.env;
+  } else {
+    // In production, use the bundled env file and decrypt values
+    const encryptedConfig = require('../../build-env.json');
+    envConfig = {
+      SPOTIFY_CLIENT_ID: decrypt(encryptedConfig.SPOTIFY_CLIENT_ID),
+      SPOTIFY_CLIENT_SECRET: decrypt(encryptedConfig.SPOTIFY_CLIENT_SECRET),
+      SPOTIFY_REDIRECT_URI: decrypt(encryptedConfig.SPOTIFY_REDIRECT_URI)
+    };
+  }
+} catch (err) {
+  console.error('Error loading environment variables:', err);
+}
 
 const app = express();
 const port = 3000;
@@ -16,8 +47,8 @@ app.use((req, res, next) => {
 });
 
 const spotifyApi = new SpotifyWebApi({
-  clientId: process.env.SPOTIFY_CLIENT_ID,
-  clientSecret: process.env.SPOTIFY_CLIENT_SECRET,
+  clientId: envConfig.SPOTIFY_CLIENT_ID,
+  clientSecret: envConfig.SPOTIFY_CLIENT_SECRET,
   redirectUri: `http://localhost:${port}/callback`
 });
 

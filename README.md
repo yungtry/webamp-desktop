@@ -61,16 +61,28 @@ Caused by the disabled hardware acceleration on the Linux. The reason is [issues
 
 Make sure you have latest [node.js](https://nodejs.org/en/) and [yarn](https://yarnpkg.com/lang/en/).
 
-### Installing
+### Development
 
 Clone this repository, install dependencies and run the start script:
 
 ```
-git clone https://github.com/durasj/webamp-desktop.git
+git clone https://github.com/yungtry/webamp-desktop.git
 cd webamp-desktop
 yarn install
+python -m castlabs_evs.vmp sign-pkg node_modules\electron\dist
 yarn start
 ```
+
+### Production
+
+Placeholder for now...
+
+```
+yarn install
+yarn export-build
+python -m castlabs_evs.vmp sign-pkg artifacts
+```
+
 
 After the build has completed, you should see one window with the app and one with developer tools. To try some changes, you can: change the code in the `./src` dir, close the current window and run the `yarn start` again.
 
