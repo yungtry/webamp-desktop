@@ -6,7 +6,7 @@
   <h3 align="center">Webamp on desktop with Spotify integration</h3>
 
   <p align="center">
-    Webamp on desktop with Spotify integration inspired by [Winampify-js](https://github.com/remigallego/winampify-js), Webamp Desktop by [@durasj](https://github.com/durasj), [Webamp](https://github.com/captbaritone/webamp) by [@captbaritone](https://github.com/captbaritone) and [Spotiamp](https://medium.com/@jrcharney/spotiamp-the-story-of-two-good-things-that-never-got-together-d2ca11e7e309)
+    Webamp on desktop with Spotify integration inspired by <a href="https://github.com/remigallego/winampify-js">Winampify-js</a>, Webamp Desktop by <a href="https://github.com/durasj">@durasj</a>, <a href="https://github.com/captbaritone/webamp">Webamp</a> by <a href="https://github.com/captbaritone">@captbaritone</a> and <a href="https://medium.com/@jrcharney/spotiamp-the-story-of-two-good-things-that-never-got-together-d2ca11e7e309">Spotiamp</a>
   </p>
 
   <p align="center">
@@ -75,7 +75,7 @@ After the build has completed, you should see one window with the app and one wi
 
 ## Kudos
 
-This project is possible thanks to the [Webamp](https://github.com/captbaritone/webamp) from [@captbaritone](https://github.com/captbaritone), [Webamp Desktop](https://github.com/durasj/webamp-desktop) from [@durasj](https://github.com/durasj) and wonderful open source work of others and authors of [many dependencies](https://github.com/yungtry/webamp-desktop-spotify/blob/master/package.json).
+This project is possible thanks to the [Webamp](https://github.com/captbaritone/webamp) from [@captbaritone](https://github.com/captbaritone), [Webamp Desktop](https://github.com/durasj/webamp-desktop) from [@durasj](https://github.com/durasj) and wonderful open source work of others like [@jberg](https://github.com/jberg) and authors of [many dependencies](https://github.com/yungtry/webamp-desktop-spotify/blob/master/package.json).
 
 Thumbar icons on Windows by [Smashicons](https://smashicons.com).
 
