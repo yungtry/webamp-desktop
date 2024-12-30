@@ -3,18 +3,15 @@
     <img src="./res/logo.svg" alt="Webamp on desktop logo" width=384 height=128>
   </a>
 
-  <h3 align="center">Webamp on desktop</h3>
+  <h3 align="center">Webamp on desktop with Spotify integration</h3>
 
   <p align="center">
-    Just like the original, now on your Mac, Windows or a Linux!
+    Webamp on desktop with Spotify integration inspired by [Winampify-js](https://github.com/remigallego/winampify-js), Webamp Desktop by [@durasj](https://github.com/durasj), [Webamp](https://github.com/captbaritone/webamp) by [@captbaritone](https://github.com/captbaritone) and [Spotiamp](https://medium.com/@jrcharney/spotiamp-the-story-of-two-good-things-that-never-got-together-d2ca11e7e309)
   </p>
 
   <p align="center">
-    <a href="https://desktop.webamp.org" title="Downloads"><img src="https://img.shields.io/github/downloads/durasj/webamp-desktop/total.svg" /></a>
-    <a href="https://travis-ci.org/durasj/webamp-desktop" title="Build"><img src="https://img.shields.io/travis/durasj/webamp-desktop/master.svg" alt="Build badge" /></a>
-    <a href="https://twitter.com/intent/tweet?text=Wow:&url=https%3A%2F%2Fgithub.com%2Fdurasj%2Fwebamp-desktop" title="Tweet"><img src="https://img.shields.io/twitter/url/https/github.com/durasj/webamp-desktop.svg?style=social" alt="Tweet badge" /></a>
+    Check out the original Webamp on desktop <a href="https://desktop.webamp.org/">here</a> by <a href="https://github.com/durasj">@durasj</a> for more functional version of the app.
   </p>
-</p>
 
 <br>
 
@@ -23,27 +20,11 @@
 Unofficial app. It has most of the functionality of the original Winamp, but it's still more of a proof of concept. Based on the [Webamp](https://github.com/captbaritone/webamp) - "A reimplementation of Winamp 2.9 in HTML5 and JavaScript." by the [@captbaritone](https://github.com/captbaritone). Linux support via AppImage and .deb package tested on the Ubuntu 18.04.
 
 ## Downloads
-Head over to the [desktop.webamp.org](https://desktop.webamp.org/) for the latest download files for your platform.
+Binaries will appear soon in the releases section.
 
 ## Ideas for the future
 
-### Higher priority
-
-- "Media Keys" support (Play, Pause, Stop, Previous, Next) via [Media Transport Controls](https://docs.microsoft.com/en-us/windows/uwp/audio-video-camera/system-media-transport-controls) on Windows, MPRemoteCommandCenter on Mac and [D-BUS on Linux](https://specifications.freedesktop.org/mpris-spec/latest/) - inspiration from [electron-media-service](https://github.com/MarshallOfSound/electron-media-service)
-- Implement Taskbar media control buttons
-- Milkdrop visualizer
-- Persisting state of the player
-
-### Lower priority
-
-- Support for multiple displays
-- Automatic updates (prepared, notifications already done)
-- Support file associations
-
-### Nice to have / Experiments
-
-- Features that can't be in the web version (by extending the API)
-- Try to integrate Spotify (inspiration from [winampify-js](https://github.com/remigallego/winampify-js)?), milkdrop can be integrated using microphone (?) due to problems with the DRM
+To be filled...
 
 ## Known issues
 
@@ -59,17 +40,23 @@ Caused by the disabled hardware acceleration on the Linux. The reason is [issues
 
 ### Prerequisites
 
-Make sure you have latest [node.js](https://nodejs.org/en/) and [yarn](https://yarnpkg.com/lang/en/).
+Make sure you have latest [node.js](https://nodejs.org/en/), [yarn](https://yarnpkg.com/lang/en/), [python](https://www.python.org/downloads/) and git installed.
 
 ### Development
 
 Clone this repository, install dependencies and run the start script:
 
 ```
-git clone https://github.com/yungtry/webamp-desktop.git
+git clone https://github.com/yungtry/webamp-desktop-spotify.git
 cd webamp-desktop
 yarn install
+python3 -m pip install --upgrade castlabs-evs
 python -m castlabs_evs.vmp sign-pkg node_modules\electron\dist
+# go to https://developer.spotify.com/dashboard and create an app. add Web API Web Playback SDK to the app, then add the client id and secret to the .env file. callback url by default is set to http://localhost:3000/callback
+# create .env file and add your Spotify credentials
+echo "SPOTIFY_CLIENT_ID=your_client_id_here
+SPOTIFY_CLIENT_SECRET=your_client_secret_here 
+SPOTIFY_REDIRECT_URI=http://localhost:3000/callback" > .env
 yarn start
 ```
 
@@ -88,9 +75,9 @@ After the build has completed, you should see one window with the app and one wi
 
 ## Kudos
 
-This project is possible thanks to the [Webamp](https://github.com/captbaritone/webamp) from [@captbaritone](https://github.com/captbaritone) and wonderful open source work of others like [@jberg](https://github.com/jberg) and authors of [many dependencies](https://github.com/durasj/webamp-desktop/blob/master/package.json).
+This project is possible thanks to the [Webamp](https://github.com/captbaritone/webamp) from [@captbaritone](https://github.com/captbaritone), [Webamp Desktop](https://github.com/durasj/webamp-desktop) from [@durasj](https://github.com/durasj) and wonderful open source work of others and authors of [many dependencies](https://github.com/yungtry/webamp-desktop-spotify/blob/master/package.json).
 
 Thumbar icons on Windows by [Smashicons](https://smashicons.com).
 
 ## Disclaimer
-Not affiliated with the [Winamp](http://www.winamp.com/). All product names, logos, and brands are property of their respective owners.
+Not affiliated with the [Winamp](http://www.winamp.com/) and [Spotify](https://www.spotify.com/). All product names, logos, and brands are property of their respective owners.

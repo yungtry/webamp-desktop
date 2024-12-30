@@ -580,19 +580,8 @@ async function showPlaylistSelector(ejectButton: Element): Promise<void> {
   wrapper.style.left = `${ejectRect.left}px`;
   wrapper.style.top = `${ejectRect.bottom + 5}px`; // 5px below the eject button
   wrapper.style.zIndex = '99999';
-  wrapper.style.backgroundColor = '#000';
-  wrapper.style.border = '1px solid #666';
-  wrapper.style.padding = '4px';
-  wrapper.style.minWidth = '200px';
   
   const select = document.createElement('select');
-  select.style.width = '100%';
-  select.style.backgroundColor = '#000';
-  select.style.color = '#00ff00';
-  select.style.border = 'none';
-  select.style.outline = 'none';
-  select.style.fontSize = '11px';
-  select.style.fontFamily = 'Arial, sans-serif';
   
   // Add a default option
   const defaultOption = document.createElement('option');
@@ -644,10 +633,9 @@ async function showPlaylistSelector(ejectButton: Element): Promise<void> {
     loadingDiv.style.top = '50%';
     loadingDiv.style.left = '50%';
     loadingDiv.style.transform = 'translate(-50%, -50%)';
-    loadingDiv.style.backgroundColor = '#000';
-    loadingDiv.style.color = '#00ff00';
+    loadingDiv.style.backgroundColor = '#fff';
+    loadingDiv.style.color = '#000';
     loadingDiv.style.padding = '10px';
-    loadingDiv.style.border = '1px solid #666';
     loadingDiv.style.zIndex = '100000';
     document.body.appendChild(loadingDiv);
 
