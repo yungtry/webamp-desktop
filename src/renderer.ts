@@ -394,7 +394,7 @@ async function playSpotifyTrack(uri: string, startPosition: number = 0) {
     }
 
     // Wait a bit for the transfer to take effect
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    await new Promise(resolve => setTimeout(resolve, 50));
 
     // Prepare request body
     const body: any = {
@@ -1042,20 +1042,24 @@ function updateTrackDuration(track: any) {
   }
 }
 
-// Add this function to handle time synchronization
+// Function to handle time synchronization
 function synchronizePlaybackTime(track: any, audio: HTMLAudioElement) {
   if (!track?.isSpotifyTrack || !spotifyPlayer) return;
 
   // Listen for Webamp's time updates
   audio.addEventListener('timeupdate', async (e) => {
-    if (!isSpotifyPlaying) return;
+    if (!isSpotifyPlaying || isPlaybackStarting) return;
 
     const webampTime = Math.floor(audio.currentTime * 1000); // Convert to ms
     const timeDiff = Math.abs(webampTime - lastSpotifyPosition);
 
-    // If Webamp time is significantly different from Spotify time (more than 1 second)
+    // If we're near the start of the track (first 2 seconds), allow larger differences
+    const isNearStart = webampTime < 2000 || lastSpotifyPosition < 2000;
+    const significantDiff = isNearStart ? 2000 : 1000;
+
+    // If Webamp time is significantly different from Spotify time
     // and it wasn't caused by our own seeking, update Spotify position
-    if (timeDiff > 1000 && !isSeekingFromWebamp) {
+    if (timeDiff > significantDiff && !isSeekingFromWebamp && !isNearStart) {
       try {
         isSeekingFromWebamp = true;
         await spotifyPlayer.seek(webampTime);
@@ -1151,6 +1155,7 @@ webamp.onTrackDidChange((track: any) => {
   lastSpotifyPosition = 0;
   isSeekingFromWebamp = false;
   currentTrackDuration = track?.duration * 1000 || 0;
+  isPlaybackStarting = true; // Add this flag to prevent initial seeking
 
   if (!track || !track.metaData) {
     console.log('No track or metadata');
@@ -1205,6 +1210,11 @@ webamp.onTrackDidChange((track: any) => {
       }
       synchronizePlaybackTime(track, audio);
     });
+
+    // Reset playback starting flag after a short delay
+    setTimeout(() => {
+      isPlaybackStarting = false;
+    }, 1000);
   }
 });
 
@@ -1785,7 +1795,7 @@ function setupSeekingBar() {
   if (!seekingBar) return;
 
   seekingBar.addEventListener('change', async (e) => {
-    if (!spotifyPlayer || !isSpotifyPlaying) return;
+    if (!spotifyPlayer || !isSpotifyPlaying || isResumingPlayback) return;
 
     try {
       // Get current state to get accurate duration
@@ -1795,6 +1805,12 @@ function setupSeekingBar() {
       // Calculate new position based on percentage of total duration
       const percentage = parseFloat(seekingBar.value);
       const newPosition = Math.floor(state.duration * (percentage / 100));
+
+      // Don't seek if we're very close to the start (first 2 seconds) and the percentage is small
+      if (state.position < 2000 && percentage <= 1) {
+        console.log('Ignoring seek near start of track');
+        return;
+      }
 
       console.log('Seeking to position:', { 
         percentage,
