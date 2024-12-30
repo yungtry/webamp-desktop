@@ -1053,18 +1053,19 @@ function synchronizePlaybackTime(track: any, audio: HTMLAudioElement) {
 
   // Listen for Webamp's time updates
   audio.addEventListener('timeupdate', async (e) => {
-    if (!isSpotifyPlaying || isPlaybackStarting) return;
+    if (!isSpotifyPlaying || isPlaybackStarting || isResumingPlayback) return;
 
     const webampTime = Math.floor(audio.currentTime * 1000); // Convert to ms
     const timeDiff = Math.abs(webampTime - lastSpotifyPosition);
 
     // If we're near the start of the track (first 2 seconds), allow larger differences
     const isNearStart = webampTime < 2000 || lastSpotifyPosition < 2000;
-    const significantDiff = isNearStart ? 2000 : 1000;
+    
+    // Increase tolerance for time differences
+    const toleranceMs = isNearStart ? 2000 : 2500;
 
-    // If Webamp time is significantly different from Spotify time
-    // and it wasn't caused by our own seeking, update Spotify position
-    if (timeDiff > significantDiff && !isSeekingFromWebamp && !isNearStart) {
+    // Only seek if the difference is significant and we're not already seeking
+    if (timeDiff > toleranceMs && !isSeekingFromWebamp && !isNearStart) {
       try {
         isSeekingFromWebamp = true;
         await spotifyPlayer.seek(webampTime);
@@ -1522,7 +1523,7 @@ function stopVisualizer() {
   previousAmplitudes = Array(20).fill(0);
   
   // Start a new interval just for falling peaks
-  visualizerInterval = setInterval(() => {
+  visualizerInterval = setInterval(async () => {
     const canvas = getCanvas();
     if (!canvas) return;
     
@@ -1539,12 +1540,18 @@ function stopVisualizer() {
     const totalWidth = NUM_BARS * (barWidth + spacing) - spacing;
     const startX = Math.floor((canvas.width - totalWidth) / 2);
 
+    // Get or update theme colors
+    if (!cachedThemeColors) {
+      cachedThemeColors = await getThemeColors();
+    }
+
     // Draw each bar (at zero height) and its falling peak
     for (let i = 0; i < NUM_BARS; i++) {
       const x = startX + i * (barWidth + spacing);
       
-      // Draw bar at minimum height
-      ctx.fillStyle = '#00FF00';
+      // Draw bar at minimum height using theme color
+      const gradient = await createBarGradient(ctx, x, barWidth, 1, canvas.height);
+      ctx.fillStyle = gradient;
       ctx.fillRect(x, canvas.height - 1, barWidth, 1);
       
       // Update and draw peak
@@ -1553,7 +1560,7 @@ function stopVisualizer() {
         const peakY = canvas.height - peakHeight;
         
         // Draw peak in white
-        ctx.fillStyle = '#FFFFFF';
+        ctx.fillStyle = cachedThemeColors.peak;
         ctx.fillRect(x, peakY, barWidth, 1);
         
         // Make peak fall
@@ -1839,6 +1846,7 @@ async function handleResume(state: SpotifyPlaybackState) {
   if (!spotifyPlayer || !currentDeviceId) return;
 
   try {
+    isResumingPlayback = true;
     // Get current track URI
     const currentTrackUri = state.track_window?.current_track?.uri;
     if (!currentTrackUri) return;
@@ -1884,6 +1892,9 @@ async function handleResume(state: SpotifyPlaybackState) {
       })
     });
 
+    // Add a delay before resuming the dummy audio to ensure Spotify has started
+    await new Promise(resolve => setTimeout(resolve, 500));
+
     isSpotifyPlaying = true;
     updatePlaybackStateUI(true);
     startVisualizer();
@@ -1895,9 +1906,15 @@ async function handleResume(state: SpotifyPlaybackState) {
       audio.currentTime = position / 1000;
       audio.play();
     });
+
+    // Reset resuming flag after a delay
+    setTimeout(() => {
+      isResumingPlayback = false;
+    }, 1000);
   } catch (error) {
     console.error('Failed to resume playback:', error);
     isSpotifyPlaying = false;
+    isResumingPlayback = false;
   }
 }
 
@@ -1930,8 +1947,13 @@ function setupSecondVisualizer() {
   const pauseButton = document.querySelector('#main-window #pause');
 
   if (playButton) {
-    playButton.addEventListener('click', async () => {
-      if (!spotifyPlayer) return;
+    playButton.addEventListener('click', async (e) => {
+      // If already playing, prevent default behavior and do nothing
+      if (isSpotifyPlaying) {
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
 
       try {
         const state = await spotifyPlayer.getCurrentState();
@@ -1964,7 +1986,7 @@ function setupSecondVisualizer() {
         console.error('Play button error:', error);
         isSpotifyPlaying = false;
       }
-    });
+    }, { capture: true }); // Add capture: true to handle event before Webamp
   }
 
   if (pauseButton) {
