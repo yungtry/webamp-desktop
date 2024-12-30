@@ -86,6 +86,11 @@ let isAuthenticated = false;
 // Add this variable at the top level
 let isVolumeChanging = false;
 
+// Add this at the top level
+let isAuthenticating = false;
+let lastAuthAttempt = 0;
+const AUTH_DEBOUNCE_TIME = 1000; // 1 second debounce
+
 // Function to get canvas reference
 function getCanvas(): HTMLCanvasElement | null {
   if (!canvasRef) {
@@ -838,10 +843,28 @@ async function showPlaylistSelector(ejectButton: Element): Promise<void> {
 
 // Function to initialize Spotify authentication
 function initSpotifyAuth() {
+  // Check if already authenticated
   if (isAuthenticated) {
     console.log('Already authenticated');
     return;
   }
+
+  // Check if authentication is in progress
+  if (isAuthenticating) {
+    console.log('Authentication already in progress');
+    return;
+  }
+
+  // Debounce check
+  const now = Date.now();
+  if (now - lastAuthAttempt < AUTH_DEBOUNCE_TIME) {
+    console.log('Auth attempt too soon, debouncing');
+    return;
+  }
+  lastAuthAttempt = now;
+
+  // Set authenticating flag
+  isAuthenticating = true;
 
   // Remove any existing player instance
   if (spotifyPlayer) {
@@ -863,6 +886,7 @@ function initSpotifyAuth() {
         const tokenData = await tokenResponse.json();
         if (tokenData.error) {
           console.error('No valid token available after auth');
+          isAuthenticating = false; // Reset flag
           return;
         }
 
@@ -872,9 +896,11 @@ function initSpotifyAuth() {
         
         // Mark as authenticated and update UI
         isAuthenticated = true;
+        isAuthenticating = false; // Reset flag
         updateAuthenticationUI(true);
       } catch (error) {
         console.error('Failed to initialize player:', error);
+        isAuthenticating = false; // Reset flag
       }
     }, 500);
   });
@@ -986,15 +1012,6 @@ function writeString(view: DataView, offset: number, string: string) {
 }
 
 const webamp = new Webamp({
-  initialTracks: [
-    {
-      metaData: {
-        artist: 'DJ Mike Llama',
-        title: 'Llama Whippin\' Intro',
-      },
-      url: './mp3/llama-2.91.mp3'
-    }
-  ],
   availableSkins: [
     { url: './skins/base-2.91.wsz', name: 'Base v2.91' },
     { url: './skins/Green-Dimension-V2.wsz', name: 'Green Dimension V2' },

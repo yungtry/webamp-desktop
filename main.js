@@ -22,6 +22,7 @@ if (isDev) {
 // Keep a global reference of the window object, if you don't, the window will
 // be closed automatically when the JavaScript object is garbage collected.
 let mainWindow;
+let authWindow = null;
 
 function createWindow() {
   const { width, height } = screen.getPrimaryDisplay().workAreaSize;
@@ -108,7 +109,14 @@ if (process.platform === "linux") {
 
 // Add new IPC handlers for Spotify authentication
 ipcMain.on("initiate-spotify-auth", () => {
-  let authWindow = new BrowserWindow({
+  // Check if auth window already exists
+  if (authWindow) {
+    // Focus the existing window instead of creating a new one
+    authWindow.focus();
+    return;
+  }
+
+  authWindow = new BrowserWindow({
     width: 800,
     height: 600,
     webPreferences: {
