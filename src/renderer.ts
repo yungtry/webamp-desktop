@@ -83,6 +83,9 @@ let initialPlaybackHandled = false;
 // Add at the top level
 let isAuthenticated = false;
 
+// Add this variable at the top level
+let isVolumeChanging = false;
+
 // Function to get canvas reference
 function getCanvas(): HTMLCanvasElement | null {
   if (!canvasRef) {
@@ -148,7 +151,9 @@ async function initSpotifyPlayer() {
                 } catch (error) {
                   console.error('Error getting token:', error);
                 }
-              }
+              },
+              // Set initial volume to match slider
+              volume: parseInt((document.querySelector('input[type="range"][title="Volume Bar"]') as HTMLInputElement)?.value || '78') / 100
             });
 
             // Error handling
@@ -877,13 +882,9 @@ function initSpotifyAuth() {
         await initSpotifyPlayer();
         console.log('Player initialized successfully');
         
-        // Mark as authenticated and disable the About button
+        // Mark as authenticated and update UI
         isAuthenticated = true;
-        const aboutButton = document.querySelector('#main-window #about') as HTMLElement;
-        if (aboutButton) {
-          aboutButton.style.pointerEvents = 'none';
-          aboutButton.style.opacity = '0.5';
-        }
+        updateAuthenticationUI(true);
       } catch (error) {
         console.error('Failed to initialize player:', error);
       }
@@ -1006,9 +1007,6 @@ const webamp = new Webamp({
       url: './mp3/llama-2.91.mp3'
     }
   ],
-  initialSkin: {
-    url: './skins/base-2.91.wsz'
-  },
   availableSkins: [
     { url: './skins/base-2.91.wsz', name: 'Base v2.91' },
     { url: './skins/Green-Dimension-V2.wsz', name: 'Green Dimension V2' },
@@ -1019,7 +1017,7 @@ const webamp = new Webamp({
     { url: './skins/XMMS-Turquoise.wsz', name: 'XMMS Turquoise' },
     { url: './skins/ZaxonRemake1-0.wsz', name: 'Zaxon Remake v1.0' },
   ],
-  enableHotkeys: true
+  enableHotkeys: false
 })
 
 const unsubscribeOnMinimize = webamp.onMinimize(() => {
@@ -1257,35 +1255,185 @@ function generateAnalyzerData(numBars: number): number[] {
   return data;
 }
 
+// Function to adjust color brightness
+function adjustColorBrightness(color: string, factor: number): string {
+  const rgb = color.match(/\d+/g)?.map(Number);
+  if (!rgb || rgb.length < 3) return color;
+  
+  return `rgb(${
+    Math.min(255, Math.round(rgb[0] * factor))},${
+    Math.min(255, Math.round(rgb[1] * factor))},${
+    Math.min(255, Math.round(rgb[2] * factor))
+  })`;
+}
+
+// Function to check if a color is transparent or too dark
+function isValidColor(color: string, isBackground: boolean = false): boolean {
+  const rgb = color.match(/\d+/g)?.map(Number);
+  if (!rgb || rgb.length < 3) return false;
+  
+  // Only check if color is transparent
+  if (color.includes('rgba') && rgb[3] === 0) return false;
+  
+  return true; // Accept all non-transparent colors
+}
+
+// Function to extract lightest color from base64 image
+function getAverageColorFromBase64(base64String: string): Promise<string> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.src = base64String;
+    
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        resolve('rgb(0, 255, 0)'); // Fallback color
+        return;
+      }
+      
+      canvas.width = img.width;
+      canvas.height = img.height;
+      ctx.drawImage(img, 0, 0);
+      
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const data = imageData.data;
+      
+      let maxBrightness = 0;
+      let lightestR = 0, lightestG = 0, lightestB = 0;
+      
+      // Find the pixel with highest brightness
+      for (let i = 0; i < data.length; i += 4) {
+        // Only consider non-transparent pixels
+        if (data[i + 3] > 128) {
+          const r = data[i];
+          const g = data[i + 1];
+          const b = data[i + 2];
+          
+          // Calculate brightness (HSL lightness formula)
+          const brightness = (Math.max(r, g, b) + Math.min(r, g, b)) / 2;
+          
+          if (brightness > maxBrightness) {
+            maxBrightness = brightness;
+            lightestR = r;
+            lightestG = g;
+            lightestB = b;
+          }
+        }
+      }
+      
+      if (maxBrightness > 0) {
+        resolve(`rgb(${lightestR}, ${lightestG}, ${lightestB})`);
+      } else {
+        resolve('rgb(0, 255, 0)'); // Fallback color
+      }
+    };
+    
+    img.onerror = () => {
+      resolve('rgb(0, 255, 0)'); // Fallback color
+    };
+  });
+}
+
+// Function to get theme colors from main window
+async function getThemeColors(): Promise<{ low: string, mid: string, high: string, peak: string }> {
+  try {
+    // Find the skin style tag
+    const skinStyle = document.querySelector('style#webamp-skin');
+    if (!skinStyle || !skinStyle.textContent) {
+      console.log('Skin style not found, using fallback colors');
+      return {
+        low: 'rgb(0, 255, 0)',
+        mid: 'rgb(255, 255, 0)',
+        high: 'rgb(255, 0, 0)',
+        peak: 'rgb(255, 255, 255)'
+      };
+    }
+
+    // Extract character-52 background image
+    const charMatch = skinStyle.textContent.match(/#webamp \.character-52\s*{[^}]*background-image:\s*url\(([^)]+)\)/);
+    if (!charMatch) {
+      console.log('Character-52 style not found, using fallback colors');
+      return {
+        low: 'rgb(0, 255, 0)',
+        mid: 'rgb(255, 255, 0)',
+        high: 'rgb(255, 0, 0)',
+        peak: 'rgb(255, 255, 255)'
+      };
+    }
+
+    // Get the base64 image
+    const base64Image = charMatch[1];
+    
+    // Get average color from image
+    const color = await getAverageColorFromBase64(base64Image);
+    console.log('Extracted color from character-52:', color);
+
+    // Create variations
+    const rgb = color.match(/\d+/g)?.map(Number);
+    if (!rgb || rgb.length < 3) {
+      throw new Error('Invalid color format');
+    }
+
+    // Create brighter and darker variations
+    const lowColor = color;
+    const midColor = adjustColorBrightness(color, 0.7);
+    const highColor = adjustColorBrightness(color, 0.4);
+
+    return {
+      low: lowColor,
+      mid: midColor,
+      high: highColor,
+      peak: 'rgb(255, 255, 255)' // Keep peaks white for visibility
+    };
+  } catch (error) {
+    console.log('Error getting theme colors:', error);
+    return {
+      low: 'rgb(0, 255, 0)', // Green
+      mid: 'rgb(255, 255, 0)', // Yellow
+      high: 'rgb(255, 0, 0)', // Red
+      peak: 'rgb(255, 255, 255)' // White
+    };
+  }
+}
+
+// Cache for theme colors
+let cachedThemeColors: { low: string, mid: string, high: string, peak: string } | null = null;
+
 // Function to create gradient for a bar
-function createBarGradient(ctx: CanvasRenderingContext2D, x: number, width: number, height: number, maxHeight: number): CanvasGradient {
+async function createBarGradient(ctx: CanvasRenderingContext2D, x: number, width: number, height: number, maxHeight: number): Promise<CanvasGradient> {
   const gradient = ctx.createLinearGradient(x, maxHeight, x, maxHeight - height);
+  
+  // Get or update cached colors
+  if (!cachedThemeColors) {
+    cachedThemeColors = await getThemeColors();
+  }
   
   // Calculate relative height (0-1)
   const relativeHeight = height / maxHeight;
   
   if (relativeHeight <= 0.4) {
-    // Low amplitude - only green
-    gradient.addColorStop(0, 'rgb(0, 255, 0)');
-    gradient.addColorStop(1, 'rgb(0, 200, 0)');
+    // Low amplitude - base color variant
+    gradient.addColorStop(0, cachedThemeColors.low);
+    gradient.addColorStop(1, adjustColorBrightness(cachedThemeColors.low, 0.8));
   } else if (relativeHeight <= 0.7) {
-    // Medium amplitude - green to yellow
-    gradient.addColorStop(0, 'rgb(0, 255, 0)');
-    gradient.addColorStop(0.6, 'rgb(255, 255, 0)');
-    gradient.addColorStop(1, 'rgb(200, 255, 0)');
+    // Medium amplitude - transition to mid color
+    gradient.addColorStop(0, cachedThemeColors.low);
+    gradient.addColorStop(0.6, cachedThemeColors.mid);
+    gradient.addColorStop(1, cachedThemeColors.low);
   } else {
-    // High amplitude - green to yellow to red
-    gradient.addColorStop(0, 'rgb(0, 255, 0)');
-    gradient.addColorStop(0.5, 'rgb(255, 255, 0)');
-    gradient.addColorStop(0.8, 'rgb(255, 128, 0)');
-    gradient.addColorStop(1, 'rgb(255, 0, 0)');
+    // High amplitude - full spectrum
+    gradient.addColorStop(0, cachedThemeColors.low);
+    gradient.addColorStop(0.5, cachedThemeColors.mid);
+    gradient.addColorStop(0.8, cachedThemeColors.high);
+    gradient.addColorStop(1, cachedThemeColors.low);
   }
   
   return gradient;
 }
 
 // Function to draw visualizer
-function drawVisualizer() {
+async function drawVisualizer() {
   const canvas = getCanvas();
   if (!canvas) return;
 
@@ -1300,31 +1448,31 @@ function drawVisualizer() {
   const data = generateAnalyzerData(NUM_BARS);
   
   // Calculate bar width and spacing
-  // Canvas is 152px wide, we want 20 bars with proper spacing
   const barWidth = 2; // Thinner bars
   const spacing = 6; // More space between bars
   const totalWidth = NUM_BARS * (barWidth + spacing) - spacing;
   const startX = Math.floor((canvas.width - totalWidth) / 2); // Center the bars
 
   // Draw each bar and its peak
-  data.forEach((amplitude, index) => {
+  for (let i = 0; i < data.length; i++) {
+    const amplitude = data[i];
     const height = Math.max(1, Math.floor(amplitude * canvas.height));
-    const x = startX + index * (barWidth + spacing);
+    const x = startX + i * (barWidth + spacing);
     const y = canvas.height - height;
 
     // Create and apply gradient for main bar
-    const gradient = createBarGradient(ctx, x, barWidth, height, canvas.height);
+    const gradient = await createBarGradient(ctx, x, barWidth, height, canvas.height);
     ctx.fillStyle = gradient;
     ctx.fillRect(x, y, barWidth, height);
     
     // Draw peak for this bar
-    const peakHeight = Math.max(1, Math.floor(peakAmplitudes[index] * canvas.height));
+    const peakHeight = Math.max(1, Math.floor(peakAmplitudes[i] * canvas.height));
     const peakY = canvas.height - peakHeight;
     
     // Set peak color to white
     ctx.fillStyle = '#FFFFFF';
     ctx.fillRect(x, peakY, barWidth, 1); // 1px peak line like Winamp
-  });
+  }
 }
 
 // Function to start visualizer animation
@@ -1340,7 +1488,12 @@ function startVisualizer() {
   // Reset canvas reference to ensure we get the latest one
   canvasRef = null;
 
-  visualizerInterval = setInterval(drawVisualizer, 50); // Update every 50ms
+  // Reset color cache
+  cachedThemeColors = null;
+
+  visualizerInterval = setInterval(() => {
+    drawVisualizer().catch(console.error);
+  }, 50); // Update every 50ms
 }
 
 // Function to stop visualizer animation
@@ -1489,6 +1642,7 @@ function startPlaybackStateMonitoring() {
 
   // Start the visualizer when playback starts
   startVisualizer();
+  
 }
 
 // Clean up interval when window is closed
@@ -1559,6 +1713,9 @@ if (appElement) {
     // Set up seeking bar
     setupSeekingBar();
 
+    // Initialize authentication UI state
+    updateAuthenticationUI(false);
+
     // Add click handlers for About and Eject buttons
     setTimeout(() => {
       // About button for authentication
@@ -1577,9 +1734,14 @@ if (appElement) {
         ejectButton.addEventListener('click', (e) => {
           e.preventDefault();
           e.stopPropagation();
-          showPlaylistSelector(ejectButton);
+          if (isAuthenticated) {
+            showPlaylistSelector(ejectButton);
+          }
         }, { passive: false });
       }
+
+      // Set up playlist action buttons
+      setupPlaylistActionButtons();
 
       // Add non-passive event listeners for playlist scrolling
       const playlistWindow = document.querySelector('#playlist-window');
@@ -1739,6 +1901,9 @@ function setupSecondVisualizer() {
   
   mainWindow.appendChild(canvas);
 
+  // Set up theme observer
+  setupThemeObserver();
+
   // Add play/pause event listeners
   const playButton = document.querySelector('#main-window #play');
   const pauseButton = document.querySelector('#main-window #pause');
@@ -1849,13 +2014,14 @@ window.addEventListener('beforeunload', () => {
 // Add this function after window.onload
 function setupMouseHandling() {
   // Get all Webamp windows and UI elements
-  const webampWindows = ['#main-window', '#equalizer-window', '#playlist-window'];
+  const webampWindows = ['#main-window', '#equalizer-window', '#playlist-window', '#webamp-context-menu'];
   
   // Function to check if element is part of Webamp UI
   function isWebampElement(element: HTMLElement | null): boolean {
     if (!element) return false;
     return webampWindows.some(sel => element.closest(sel)) || 
-           element.closest('.spotify-playlist-wrapper') !== null;
+           element.closest('.spotify-playlist-wrapper') !== null ||
+           element.closest('#webamp-context-menu') !== null;
   }
 
   // Handle mouse enter/leave for Webamp windows
@@ -1879,20 +2045,21 @@ function setupMouseHandling() {
     }
   });
 
-  // Handle playlist wrapper
+  // Handle playlist wrapper and context menu
   const observer = new MutationObserver((mutations) => {
     mutations.forEach((mutation) => {
       mutation.addedNodes.forEach((node) => {
-        if ((node as HTMLElement).classList?.contains('spotify-playlist-wrapper')) {
-          const wrapper = node as HTMLElement;
-          wrapper.addEventListener('mouseenter', () => {
+        if ((node as HTMLElement).classList?.contains('spotify-playlist-wrapper') ||
+            (node as HTMLElement).id === 'webamp-context-menu') {
+          const element = node as HTMLElement;
+          element.addEventListener('mouseenter', () => {
             if (!isOverWebamp) {
               isOverWebamp = true;
               ipcRenderer.send('ignoreMouseEvents', false);
             }
           });
 
-          wrapper.addEventListener('mouseleave', (e) => {
+          element.addEventListener('mouseleave', (e) => {
             const toElement = (e as MouseEvent).relatedTarget as HTMLElement;
             if (!isWebampElement(toElement)) {
               isOverWebamp = false;
@@ -1904,7 +2071,7 @@ function setupMouseHandling() {
     });
   });
 
-  observer.observe(document.body, { childList: true });
+  observer.observe(document.body, { childList: true, subtree: true });
 
   // Handle clicks outside Webamp windows
   document.addEventListener('click', (e) => {
@@ -1922,7 +2089,25 @@ window.onload = async () => {
   
   setupMouseHandling();
   
-  // ... rest of existing code ...
+  // Set up volume slider
+  const volumeSlider = document.querySelector('input[type="range"][title="Volume Bar"]') as HTMLInputElement;
+  if (volumeSlider) {
+    // Set initial volume when player is ready
+    const initialVolume = parseInt(volumeSlider.value) / 100;
+    if (spotifyPlayer) {
+      await spotifyPlayer.setVolume(initialVolume);
+    }
+
+    // Handle volume changes
+    volumeSlider.addEventListener('input', async () => {
+      await synchronizeVolume(volumeSlider);
+    });
+
+    // Also handle change event for when the user stops dragging
+    volumeSlider.addEventListener('change', async () => {
+      await synchronizeVolume(volumeSlider);
+    });
+  }
 };
 
 // Add these functions near the top
@@ -1979,16 +2164,6 @@ function setupPlaybackControls() {
   }
 }
 
-// Add this to window.onload
-window.onload = async () => {
-  // ... existing code ...
-  
-  setupMouseHandling();
-  setupPlaybackControls();
-  
-  // ... rest of existing code ...
-};
-
 // Function to handle track playback
 async function handleTrackPlay(trackKey: string) {
   console.log('Track lookup:', { trackKey, spotifyUri: trackUriMap.get(trackKey) });
@@ -2022,4 +2197,167 @@ async function handleTrackPlay(trackKey: string) {
       console.error('Failed to start Spotify playback:', error);
     }
   }
+}
+
+// Add this function after the existing functions
+function updateAuthenticationUI(isAuthenticated: boolean) {
+  // Disable/enable About button
+  const aboutButton = document.querySelector('#main-window #about') as HTMLElement;
+  if (aboutButton) {
+    aboutButton.style.pointerEvents = isAuthenticated ? 'none' : 'auto';
+    aboutButton.style.opacity = isAuthenticated ? '0.5' : '1';
+  }
+
+  // Disable/enable Eject button
+  const ejectButton = document.querySelector('#main-window #eject') as HTMLElement;
+  if (ejectButton) {
+    ejectButton.style.pointerEvents = isAuthenticated ? 'auto' : 'none';
+    ejectButton.style.opacity = isAuthenticated ? '1' : '0.5';
+  }
+}
+
+// Function to handle volume synchronization
+async function synchronizeVolume(volumeSlider: HTMLInputElement) {
+  if (!spotifyPlayer || isVolumeChanging) return;
+
+  try {
+    isVolumeChanging = true;
+    const volume = parseInt(volumeSlider.value) / 100;
+    await spotifyPlayer.setVolume(volume);
+    console.log('Volume set to:', volume);
+  } catch (error) {
+    console.error('Failed to set volume:', error);
+  } finally {
+    isVolumeChanging = false;
+  }
+}
+
+// Function to set up playlist action buttons
+function setupPlaylistActionButtons() {
+  // Eject button
+  const ejectButton = document.querySelector('.playlist-bottom-right .playlist-action-buttons .playlist-eject-button');
+  if (ejectButton) {
+    const clonedButton = ejectButton.cloneNode(true);
+    ejectButton.parentNode?.replaceChild(clonedButton, ejectButton);
+    
+    clonedButton.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const mainEject = document.querySelector('#main-window #eject') as HTMLElement;
+      if (mainEject) {
+        mainEject.click();
+      }
+    });
+  }
+}
+
+// Function to set up theme observer
+function setupThemeObserver() {
+  // Create observer for the entire webamp container to catch all theme changes
+  const webampContainer = document.getElementById('webamp');
+  if (!webampContainer) return;
+
+  // Function to handle skin changes
+  function handleSkinChange() {
+    console.log('Skin change detected');
+    // Reset color cache to force recalculation
+    cachedThemeColors = null;
+    // Wait a bit for the skin to fully load
+    setTimeout(() => {
+      if (visualizerInterval) {
+        drawVisualizer();
+      }
+    }, 100);
+  }
+
+  // Watch for skin changes through the options menu
+  const optionsButton = document.querySelector('#main-window #option');
+  if (optionsButton) {
+    optionsButton.addEventListener('click', () => {
+      // Wait for the skin menu to appear
+      setTimeout(() => {
+        const skinMenu = document.querySelector('#webamp-context-menu');
+        if (skinMenu) {
+          // Add click listener to the entire menu to catch all skin selections
+          skinMenu.addEventListener('click', (e) => {
+            const target = e.target as HTMLElement;
+            if (target.closest('.skin-menu')) {
+              console.log('Skin menu option clicked');
+              // Wait for skin to load and check multiple times
+              for (let delay of [500, 1000, 1500]) {
+                setTimeout(handleSkinChange, delay);
+              }
+            }
+          });
+        }
+      }, 50);
+    });
+  }
+
+  // Main observer for style changes
+  const observer = new MutationObserver((mutations) => {
+    let shouldUpdate = false;
+
+    for (const mutation of mutations) {
+      // Check for style or class changes
+      if (mutation.type === 'attributes' && 
+         (mutation.attributeName === 'style' || mutation.attributeName === 'class')) {
+        const target = mutation.target as HTMLElement;
+        // Only trigger on main window or its direct children changes
+        if (target.id === 'main-window' || target.closest('#main-window')) {
+          shouldUpdate = true;
+          break;
+        }
+      }
+      
+      // Check for structural changes
+      if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
+        const addedNodes = Array.from(mutation.addedNodes);
+        if (addedNodes.some(node => 
+          node instanceof HTMLElement && (
+            node.id === 'main-window' ||
+            node.classList.contains('window') ||
+            node.classList.contains('selected') // Detect skin selection
+          ))) {
+          shouldUpdate = true;
+          break;
+        }
+      }
+    }
+
+    if (shouldUpdate) {
+      handleSkinChange();
+    }
+  });
+
+  // Observe the webamp container
+  observer.observe(webampContainer, {
+    attributes: true,
+    childList: true,
+    subtree: true,
+    attributeFilter: ['style', 'class']
+  });
+
+  // Also observe the document body for skin menu appearance
+  const bodyObserver = new MutationObserver((mutations) => {
+    for (const mutation of mutations) {
+      if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
+        const addedNodes = Array.from(mutation.addedNodes);
+        if (addedNodes.some(node => 
+          node instanceof HTMLElement && 
+          (node.id === 'webamp-context-menu' || node.classList.contains('skin-menu')))) {
+          console.log('Skin menu appeared');
+          // Wait for potential skin change
+          setTimeout(handleSkinChange, 500);
+        }
+      }
+    }
+  });
+
+  bodyObserver.observe(document.body, {
+    childList: true,
+    subtree: true
+  });
+
+  console.log('Theme observers set up successfully');
 }
